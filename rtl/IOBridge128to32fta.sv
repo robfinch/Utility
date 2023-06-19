@@ -32,7 +32,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //                                                            
-// IOBridge128wb.v
+// IOBridge128to32fta.v
 //
 // Adds FF's into the io path. This makes it easier for the place and
 // route to take place. 
@@ -47,7 +47,7 @@
 //
 import fta_bus_pkg::*;
 
-module IOBridge128to64fta(rst_i, clk_i, s1_req, s1_resp, m_req, ch0resp, ch1resp );
+module IOBridge128to32fta(rst_i, clk_i, s1_req, s1_resp, m_req, chresp );
 parameter CHANNELS = 2;
 parameter IDLE = 3'd0;
 parameter WAIT_ACK = 3'd1;
@@ -60,24 +60,53 @@ input rst_i;
 input clk_i;
 input fta_cmd_request128_t s1_req;
 output fta_cmd_response128_t s1_resp;
-output fta_cmd_request64_t m_req;
-input fta_cmd_response64_t ch0resp;
-input fta_cmd_response64_t ch1resp;
+output fta_cmd_request32_t m_req;
+input fta_cmd_response32_t [CHANNELS-1:0] chresp;
 
-fta_cmd_response64_t [CHANNELS-1:0] resps;
-fta_cmd_response64_t respo;
-assign resps[0] = ch0resp;
-assign resps[1] = ch1resp;
+reg [3:0] s1_a30;
+fta_cmd_response32_t respo;
 
-fta_respbuf64 #(CHANNELS) urespb1
+fta_respbuf32 #(CHANNELS) urespb1
 (
 	.rst(rst_i),
 	.clk(clk_i),
-	.resp(resps),
+	.resp(chresp),
 	.resp_o(respo)
 );
 
-always @(posedge clk_i)
+always_comb
+	case(s1_req.sel)
+	16'h0001:	s1_a30 = 4'h0;
+	16'h0002:	s1_a30 = 4'h1;
+	16'h0004:	s1_a30 = 4'h2;
+	16'h0008:	s1_a30 = 4'h3;
+	16'h0010:	s1_a30 = 4'h4;
+	16'h0020:	s1_a30 = 4'h5;
+	16'h0040:	s1_a30 = 4'h6;
+	16'h0080:	s1_a30 = 4'h7;
+	16'h0100:	s1_a30 = 4'h8;
+	16'h0200:	s1_a30 = 4'h9;
+	16'h0400:	s1_a30 = 4'hA;
+	16'h0800:	s1_a30 = 4'hB;
+	16'h1000:	s1_a30 = 4'hC;
+	16'h2000:	s1_a30 = 4'hD;
+	16'h4000:	s1_a30 = 4'hE;
+	16'h8000:	s1_a30 = 4'hF;
+	16'h0003:	s1_a30 = 4'h0;
+	16'h000C:	s1_a30 = 4'h2;
+	16'h0030:	s1_a30 = 4'h4;
+	16'h00C0:	s1_a30 = 4'h6;
+	16'h0300:	s1_a30 = 4'h8;
+	16'h0C00:	s1_a30 = 4'hA;
+	16'h3000:	s1_a30 = 4'hC;
+	16'hC000:	s1_a30 = 4'hE;
+	16'h00FF:	s1_a30 = 4'h0;
+	16'hFF00:	s1_a30 = 4'h8;
+	16'hFFFF:	s1_a30 = 4'h0;
+	default:	s1_a30 = 4'h0;
+	endcase
+
+always_ff @(posedge clk_i)
 if (rst_i) begin
 	m_req <= 'd0;
 	m_req.padr <= 32'hFFFFFFFF;
@@ -93,8 +122,9 @@ else begin
     m_req.cid <= s1_req.cid;
     m_req.tid <= s1_req.tid;
     m_req.padr <= s1_req.padr;
+    m_req.padr[3:0] <= s1_a30;
 //    m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
-    m_req.sel <= s1_req.sel[7:0];
+    m_req.sel <= s1_req.sel[15:12]|s1_req.sel[11:8]|s1_req.sel[7:4]|s1_req.sel[3:0];
     m_req.we <= s1_req.we;
   end
   else begin
@@ -106,7 +136,7 @@ else begin
 	end
   if (s1_req.cyc)
 //		m_req.dat <= s1_req.data1 >> {|s1_req.sel[15:8],6'd0};
-		m_req.dat <= s1_req.data1;
+		m_req.dat <= s1_req.data1 >> {s1_a30[3:2],5'd0};
 	else
 		m_req.dat <= 'd0;
 
@@ -116,7 +146,7 @@ else begin
 	s1_resp.rty <= respo.rty;
 	s1_resp.next <= respo.next;
 	s1_resp.stall <= respo.stall;
-	s1_resp.dat <= {2{respo.dat}};
+	s1_resp.dat <= {4{respo.dat}};
 	s1_resp.cid <= respo.cid;
 	s1_resp.tid <= respo.tid;
 	s1_resp.adr <= respo.adr;

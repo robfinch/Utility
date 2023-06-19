@@ -63,7 +63,6 @@ end
 
 always_ff @(posedge clk, posedge rst)
 if (rst) begin
-	resp_o <= 'd0;
 	for (nn2 = 0; nn2 < CHANNELS; nn2 = nn2 + 1) begin
 		respbuf[nn2] <= 'd0;		
 	end
@@ -127,7 +126,6 @@ end
 
 always_ff @(posedge clk, posedge rst)
 if (rst) begin
-	resp_o <= 'd0;
 	for (nn2 = 0; nn2 < CHANNELS; nn2 = nn2 + 1) begin
 		respbuf[nn2] <= 'd0;		
 	end
@@ -189,7 +187,6 @@ end
 
 always_ff @(posedge clk, posedge rst)
 if (rst) begin
-	resp_o <= 'd0;
 	for (nn2 = 0; nn2 < CHANNELS; nn2 = nn2 + 1) begin
 		respbuf[nn2] <= 'd0;		
 	end
