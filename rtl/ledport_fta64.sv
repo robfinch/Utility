@@ -17,13 +17,18 @@ else begin
 		led <= req.dat[7:0];
 end
 
-assign resp.cid = req.cid;
-assign resp.tid = req.tid;		
-assign resp.ack = cs;
-assign resp.err = 'd0;
-assign resp.rty = 'd0;
-assign resp.pri = 4'd7;
-assign resp.adr = req.padr;
-assign resp.dat = 'd0;
+always_ff @(posedge clk, posedge rst)
+if (rst)
+	resp <= 'd0;
+else begin
+	resp.cid <= req.cid;
+	resp.tid <= req.tid;		
+	resp.ack <= cs && (!req.we || req.cti==fta_bus_pkg::ERC);
+	resp.err <= 'd0;
+	resp.rty <= 'd0;
+	resp.pri <= 4'd7;
+	resp.adr <= req.padr;
+	resp.dat <= 'd0;
+end
 
 endmodule

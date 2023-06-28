@@ -93,8 +93,9 @@ else begin
     m_req.cid <= s1_req.cid;
     m_req.tid <= s1_req.tid;
     m_req.padr <= s1_req.padr;
-//    m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
-    m_req.sel <= s1_req.sel[7:0];
+    m_req.padr[3] <= |s1_req.sel[15:8];
+    m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
+//    m_req.sel <= s1_req.sel[7:0];
     m_req.we <= s1_req.we;
   end
   else begin
@@ -105,8 +106,8 @@ else begin
   	m_req.padr <= 32'hFFFFFFFF;
 	end
   if (s1_req.cyc)
-//		m_req.dat <= s1_req.data1 >> {|s1_req.sel[15:8],6'd0};
-		m_req.dat <= s1_req.data1;
+		m_req.dat <= s1_req.data1 >> {|s1_req.sel[15:8],6'd0};
+//		m_req.dat <= s1_req.data1;
 	else
 		m_req.dat <= 'd0;
 
