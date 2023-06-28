@@ -141,7 +141,7 @@ wire [31:0] cfg_out;
 wire cs_io;
 
 reg cs_config;
-fta_request32_t reqd;
+fta_cmd_request32_t reqd;
 
 always_ff @(posedge clk_i)
 	cs_config <= cs_config_i & req.cyc & req.stb &&
@@ -156,7 +156,7 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	sel <= 4'b1111;
 always_ff @(posedge clk_i)
-	adr <= req.adr;
+	adr <= req.padr;
 always_ff @(posedge clk_i)
 	dat <= req.dat;
 always_ff @(posedge clk_i)

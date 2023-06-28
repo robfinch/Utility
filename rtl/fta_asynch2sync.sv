@@ -51,6 +51,7 @@ always_ff @(posedge clk, posedge rst)
 if (rst) begin
 	req_o <= 'd0;
 	resp_o <= 'd0;
+	aer_i <= 'd0;
 end
 else begin
 	aer_i <= resp_i.ack|resp_i.err|resp_i.rty;

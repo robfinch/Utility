@@ -77,6 +77,44 @@ fta_respbuf64 #(CHANNELS) urespb1
 	.resp_o(respo)
 );
 
+reg [3:0] s1_a30;
+
+always_comb
+	case(s1_req.sel)
+	16'h0001:	s1_a30 = 4'h0;
+	16'h0002:	s1_a30 = 4'h1;
+	16'h0004:	s1_a30 = 4'h2;
+	16'h0008:	s1_a30 = 4'h3;
+	16'h0010:	s1_a30 = 4'h4;
+	16'h0020:	s1_a30 = 4'h5;
+	16'h0040:	s1_a30 = 4'h6;
+	16'h0080:	s1_a30 = 4'h7;
+	16'h0100:	s1_a30 = 4'h8;
+	16'h0200:	s1_a30 = 4'h9;
+	16'h0400:	s1_a30 = 4'hA;
+	16'h0800:	s1_a30 = 4'hB;
+	16'h1000:	s1_a30 = 4'hC;
+	16'h2000:	s1_a30 = 4'hD;
+	16'h4000:	s1_a30 = 4'hE;
+	16'h8000:	s1_a30 = 4'hF;
+	16'h0003:	s1_a30 = 4'h0;
+	16'h000C:	s1_a30 = 4'h2;
+	16'h0030:	s1_a30 = 4'h4;
+	16'h00C0:	s1_a30 = 4'h6;
+	16'h0300:	s1_a30 = 4'h8;
+	16'h0C00:	s1_a30 = 4'hA;
+	16'h3000:	s1_a30 = 4'hC;
+	16'hC000:	s1_a30 = 4'hE;
+	16'h000F:	s1_a30 = 4'h0;
+	16'h00F0: s1_a30 = 4'h4;
+	16'h0F00: s1_a30 = 4'h8;
+	16'hF000:	s1_a30 = 4'hC;
+	16'h00FF:	s1_a30 = 4'h0;
+	16'hFF00:	s1_a30 = 4'h8;
+	16'hFFFF:	s1_a30 = 4'h0;
+	default:	s1_a30 = 4'h0;
+	endcase
+
 always @(posedge clk_i)
 if (rst_i) begin
 	m_req <= 'd0;
@@ -93,7 +131,7 @@ else begin
     m_req.cid <= s1_req.cid;
     m_req.tid <= s1_req.tid;
     m_req.padr <= s1_req.padr;
-    m_req.padr[3] <= |s1_req.sel[15:8];
+    m_req.padr[3:0] <= s1_a30;
     m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
 //    m_req.sel <= s1_req.sel[7:0];
     m_req.we <= s1_req.we;
