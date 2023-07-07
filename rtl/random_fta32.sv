@@ -141,6 +141,7 @@ wire [31:0] cfg_out;
 wire cs_io;
 
 reg cs_config;
+reg cs_io_id;
 fta_cmd_request32_t reqd;
 
 always_ff @(posedge clk_i)
@@ -150,11 +151,13 @@ always_ff @(posedge clk_i)
 		req.padr[14:12]==CFG_FUNC;
 
 always_ff @(posedge clk_i)
-	cs_rand <= cs_io_i && req.cyc && req.stb && cs_io;
+	cs_io_id <= cs_io_i;
+always_comb
+	cs_rand <= cs_io_id && reqd.cyc && reqd.stb && cs_io;
 always_ff @(posedge clk_i)
 	we <= req.we;
 always_ff @(posedge clk_i)
-	sel <= 4'b1111;
+	sel <= req.sel;
 always_ff @(posedge clk_i)
 	adr <= req.padr;
 always_ff @(posedge clk_i)
@@ -163,9 +166,10 @@ always_ff @(posedge clk_i)
 	reqd <= req;
 
 always_ff @(posedge clk_i)
-	resp.ack <= (cs_rand|cs_config) & reqd.cyc & reqd.stb;
-always_ff @(posedge clk_i)
-	resp.adr <= reqd.padr;
+	resp.ack <= (cs_rand|cs_config) & reqd.cyc & reqd.stb & (~reqd.we || reqd.cti==fta_bus_pkg::ERC);
+vtdl #(.WID(6), .DEP(16)) urdyd3 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.cid), .q(resp.cid));
+vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) urdyd4 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.tid), .q(resp.tid));
+vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.padr), .q(resp.adr));
 assign resp.next = 1'b0;
 assign resp.stall = 1'b0;
 assign resp.rty = 1'b0;
@@ -262,7 +266,7 @@ begin
 	wrw <= `FALSE;
 	wrz <= `FALSE;
 	if (cs_rand) begin
-		if (pe_we)
+		if (we)
 			case(adr[3:2])
 			2'd0:
 				begin

@@ -13,7 +13,7 @@ always_ff @(posedge clk, posedge rst)
 if (rst)
 	led <= 'd0;
 else begin
-	if (cs)
+	if (cs & req.we)
 		led <= req.dat[7:0];
 end
 
