@@ -24,11 +24,11 @@ else begin
 	resp.cid <= req.cid;
 	resp.tid <= req.tid;		
 	resp.ack <= cs && (!req.we || req.cti==fta_bus_pkg::ERC);
-	resp.err <= 'd0;
-	resp.rty <= 'd0;
+	resp.err <= fta_bus_pkg::OKAY;
+	resp.rty <= 1'd0;
 	resp.pri <= 4'd7;
 	resp.adr <= req.padr;
-	resp.dat <= 'd0;
+	resp.dat <= 64'd0;
 end
 
 endmodule

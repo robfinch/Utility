@@ -1,6 +1,6 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2011-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2011-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -173,7 +173,7 @@ vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(
 assign resp.next = 1'b0;
 assign resp.stall = 1'b0;
 assign resp.rty = 1'b0;
-assign resp.err = 1'b0;
+assign resp.err = fta_bus_pkg::OKAY;
 assign resp.pri = 4'd7;
 assign resp.dat = dat_o;
 

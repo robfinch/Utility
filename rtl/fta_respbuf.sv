@@ -50,7 +50,7 @@ reg [HBIT:0] tmp;
 reg [1:0] tmp2;
 reg [1:0] chcnt [0:CHANNELS-1];
 
-integer nn1, nn2, nn3;
+integer nn1, nn2, nn3, nn4;
 
 // Search for channel with response ready.
 always_comb
@@ -72,12 +72,13 @@ if (rst) begin
 	resp_o <= 'd0;
 	for (nn2 = 0; nn2 < CHANNELS; nn2 = nn2 + 1) begin
 		chcnt[nn2] <= 'd0;
-		respbuf[nn2] <= 'd0;		
+		for (nn4 = 0; nn4 < 4; nn4 = nn4 + 1)
+			respbuf[nn4][nn2] <= 'd0;
 	end
 end
 else begin
 	resp_o.ack <= 1'b0;
-	resp_o.err <= 'd0;
+	resp_o.err <= fta_bus_pkg::OKAY;
 	resp_o.rty <= 'd0;
 	resp_o.dat <= 'd0;
 	resp_o.tid <= 'd0;
@@ -142,7 +143,7 @@ if (rst) begin
 end
 else begin
 	resp_o.ack <= 1'b0;
-	resp_o.err <= 'd0;
+	resp_o.err <= fta_bus_pkg::OKAY;
 	resp_o.rty <= 'd0;
 	resp_o.dat <= 'd0;
 	resp_o.tid <= 'd0;
@@ -211,7 +212,7 @@ if (rst) begin
 end
 else begin
 	resp_o.ack <= 1'b0;
-	resp_o.err <= 'd0;
+	resp_o.err <= fta_bus_pkg::OKAY;
 	resp_o.rty <= 'd0;
 	resp_o.dat <= 'd0;
 	resp_o.tid <= 'd0;

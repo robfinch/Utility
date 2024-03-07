@@ -257,10 +257,12 @@ always_ff @(posedge clk_i)
 	resp.adr <= reqd.padr;
 always_ff @(posedge clk_i)
 	resp.tid <= reqd.tid;
+always_ff @(posedge clk_i)
+	resp.cid <= reqd.cid;
 assign resp.next = 1'b0;
 assign resp.stall = 1'b0;
 assign resp.rty = 1'b0;
-assign resp.err = 1'b0;
+assign resp.err = fta_bus_pkg::OKAY;
 assign resp.pri = 4'd7;
 assign resp.dat = dat_o;
 
