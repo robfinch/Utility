@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@opencores.org
 //       ||
@@ -123,7 +123,6 @@ else begin
     m_req.cmd <= s1_req.cmd;
     m_req.cyc <= 1'b1;
     m_req.stb <= s1_req.stb;
-    m_req.cid <= s1_req.cid;
     m_req.tid <= s1_req.tid;
     m_req.padr <= s1_req.padr;
     m_req.padr[3:0] <= s1_a30;
@@ -151,7 +150,6 @@ else begin
 	s1_resp.next <= respo.next;
 	s1_resp.stall <= respo.stall;
 	s1_resp.dat <= {4{respo.dat}};
-	s1_resp.cid <= respo.cid;
 	s1_resp.tid <= respo.tid;
 	s1_resp.adr <= respo.adr;
 	s1_resp.pri <= respo.pri;
