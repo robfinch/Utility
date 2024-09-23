@@ -13,7 +13,6 @@ begin
 	szerr = 1'b0;
 	req64_o.om = req128_i.om;
 	req64_o.cmd = req128_i.cmd;
-	req64_o.cid = req128_i.cid;
 	req64_o.tid = req128_i.tid;
 	req64_o.bte = req128_i.bte;
 	req64_o.blen = req128_i.blen;
@@ -74,7 +73,6 @@ end
 
 always_comb
 begin
-	resp128_o.cid = resp64_i.cid;
 	resp128_o.tid = resp64_i.tid;
 	resp128_o.pri = resp64_i.pri;
 	resp128_o.stall = resp64_i.stall;

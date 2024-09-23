@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@opencores.org
 //       ||
@@ -47,7 +47,7 @@
 //
 import fta_bus_pkg::*;
 
-module IOBridge128to64fta(rst_i, clk_i, clk5x_i, s1_req, s1_resp, m_req, ch0resp, ch1resp );
+module IOBridge256to64fta(rst_i, clk_i, clk5x_i, s1_req, s1_resp, m_req, ch0resp, ch1resp );
 parameter CHANNELS = 2;
 parameter IDLE = 3'd0;
 parameter WAIT_ACK = 3'd1;
@@ -59,8 +59,8 @@ parameter ASYNCH = 1'b1;
 input rst_i;
 input clk_i;
 input clk5x_i;
-input fta_cmd_request128_t s1_req;
-output fta_cmd_response128_t s1_resp;
+input fta_cmd_request256_t s1_req;
+output fta_cmd_response256_t s1_resp;
 output fta_cmd_request64_t m_req;
 input fta_cmd_response64_t ch0resp;
 input fta_cmd_response64_t ch1resp;
@@ -79,42 +79,78 @@ fta_respbuf64 #(CHANNELS) urespb1
 	.resp_o(respo)
 );
 
-reg [3:0] s1_a30;
+reg [4:0] s1_a40;
 
 always_comb
 	case(s1_req.sel)
-	16'h0001:	s1_a30 = 4'h0;
-	16'h0002:	s1_a30 = 4'h1;
-	16'h0004:	s1_a30 = 4'h2;
-	16'h0008:	s1_a30 = 4'h3;
-	16'h0010:	s1_a30 = 4'h4;
-	16'h0020:	s1_a30 = 4'h5;
-	16'h0040:	s1_a30 = 4'h6;
-	16'h0080:	s1_a30 = 4'h7;
-	16'h0100:	s1_a30 = 4'h8;
-	16'h0200:	s1_a30 = 4'h9;
-	16'h0400:	s1_a30 = 4'hA;
-	16'h0800:	s1_a30 = 4'hB;
-	16'h1000:	s1_a30 = 4'hC;
-	16'h2000:	s1_a30 = 4'hD;
-	16'h4000:	s1_a30 = 4'hE;
-	16'h8000:	s1_a30 = 4'hF;
-	16'h0003:	s1_a30 = 4'h0;
-	16'h000C:	s1_a30 = 4'h2;
-	16'h0030:	s1_a30 = 4'h4;
-	16'h00C0:	s1_a30 = 4'h6;
-	16'h0300:	s1_a30 = 4'h8;
-	16'h0C00:	s1_a30 = 4'hA;
-	16'h3000:	s1_a30 = 4'hC;
-	16'hC000:	s1_a30 = 4'hE;
-	16'h000F:	s1_a30 = 4'h0;
-	16'h00F0: s1_a30 = 4'h4;
-	16'h0F00: s1_a30 = 4'h8;
-	16'hF000:	s1_a30 = 4'hC;
-	16'h00FF:	s1_a30 = 4'h0;
-	16'hFF00:	s1_a30 = 4'h8;
-	16'hFFFF:	s1_a30 = 4'h0;
-	default:	s1_a30 = 4'h0;
+	32'h00000001:	s1_a40 = 5'h0;
+	32'h00000002:	s1_a40 = 5'h1;
+	32'h00000004:	s1_a40 = 5'h2;
+	32'h00000008:	s1_a40 = 5'h3;
+	32'h00000010:	s1_a40 = 5'h4;
+	32'h00000020:	s1_a40 = 5'h5;
+	32'h00000040:	s1_a40 = 5'h6;
+	32'h00000080:	s1_a40 = 5'h7;
+	32'h00000100:	s1_a40 = 5'h8;
+	32'h00000200:	s1_a40 = 5'h9;
+	32'h00000400:	s1_a40 = 5'hA;
+	32'h00000800:	s1_a40 = 5'hB;
+	32'h00001000:	s1_a40 = 5'hC;
+	32'h00002000:	s1_a40 = 5'hD;
+	32'h00004000:	s1_a40 = 5'hE;
+	32'h00008000:	s1_a40 = 5'hF;
+	32'h00010000:	s1_a40 = 5'h10;
+	32'h00020000:	s1_a40 = 5'h11;
+	32'h00040000:	s1_a40 = 5'h12;
+	32'h00080000:	s1_a40 = 5'h13;
+	32'h00100000:	s1_a40 = 5'h14;
+	32'h00200000:	s1_a40 = 5'h15;
+	32'h00400000:	s1_a40 = 5'h16;
+	32'h00800000:	s1_a40 = 5'h17;
+	32'h01000000:	s1_a40 = 5'h18;
+	32'h02000000:	s1_a40 = 5'h19;
+	32'h04000000:	s1_a40 = 5'h1A;
+	32'h08000000:	s1_a40 = 5'h1B;
+	32'h10000000:	s1_a40 = 5'h1C;
+	32'h20000000:	s1_a40 = 5'h1D;
+	32'h40000000:	s1_a40 = 5'h1E;
+	32'h80000000:	s1_a40 = 5'h1F;
+	
+	32'h00000003:	s1_a40 = 5'h0;
+	32'h0000000C:	s1_a40 = 5'h2;
+	32'h00000030:	s1_a40 = 5'h4;
+	32'h000000C0:	s1_a40 = 5'h6;
+	32'h00000300:	s1_a40 = 5'h8;
+	32'h00000C00:	s1_a40 = 5'hA;
+	32'h00003000:	s1_a40 = 5'hC;
+	32'h0000C000:	s1_a40 = 5'hE;
+	32'h00030000:	s1_a40 = 5'h10;
+	32'h000C0000:	s1_a40 = 5'h12;
+	32'h00300000:	s1_a40 = 5'h14;
+	32'h00C00000:	s1_a40 = 5'h16;
+	32'h03000000:	s1_a40 = 5'h18;
+	32'h0C000000:	s1_a40 = 5'h1A;
+	32'h30000000:	s1_a40 = 5'h1C;
+	32'hC0000000:	s1_a40 = 5'h1E;
+	
+	32'h0000000F:	s1_a40 = 5'h0;
+	32'h000000F0: s1_a40 = 5'h4;
+	32'h00000F00: s1_a40 = 5'h8;
+	32'h0000F000:	s1_a40 = 5'hC;
+	32'h000F0000:	s1_a40 = 5'h10;
+	32'h00F00000: s1_a40 = 5'h14;
+	32'h0F000000: s1_a40 = 5'h18;
+	32'hF0000000:	s1_a40 = 5'h1C;
+
+	32'h000000FF:	s1_a40 = 5'h0;
+	32'h0000FF00:	s1_a40 = 5'h8;
+	32'h00FF0000:	s1_a40 = 5'h10;
+	32'hFF000000:	s1_a40 = 5'h18;
+
+	32'h0000FFFF:	s1_a40 = 5'h0;
+	32'hFFFF0000:	s1_a40 = 5'h10;
+	32'hFFFFFFFF:	s1_a40 = 5'h0;
+	default:	s1_a40 = 5'h0;
 	endcase
 
 always @(posedge clk_i)
@@ -132,8 +168,8 @@ else begin
     m_req.stb <= s1_req.stb;
     m_req.tid <= s1_req.tid;
     m_req.padr <= s1_req.padr;
-    m_req.padr[3:0] <= s1_a30;
-    m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
+    m_req.padr[4:0] <= s1_a40;
+    m_req.sel <= s1_req.sel[31:24]|s1_req.sel[23:16]|s1_req.sel[15:8]|s1_req.sel[7:0];
 //    m_req.sel <= s1_req.sel[7:0];
     m_req.we <= s1_req.we;
   end
@@ -145,7 +181,7 @@ else begin
   	m_req.padr <= 32'hFFFFFFFF;
 	end
   if (s1_req.cyc)
-		m_req.dat <= s1_req.data1 >> {|s1_req.sel[15:8],6'd0};
+		m_req.dat <= s1_req.data1 >> {|s1_req.sel[31:16],|s1_req.sel[15:8],6'd0};
 //		m_req.dat <= s1_req.data1;
 	else
 		m_req.dat <= 'd0;

@@ -114,6 +114,7 @@ always_ff @(posedge clk_i)
 if (rst_i) begin
 	m_req <= 'd0;
 	m_req.padr <= 32'hFFFFFFFF;
+	s1_resp <= {$bits(fta_cmd_response128_t){1'b0}};
 end
 else begin
   // Filter requests to the I/O address range

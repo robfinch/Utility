@@ -32,26 +32,27 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// 192 LUTs / 144 FFs
+// 442 LUTs / 240 FFs
 // ============================================================================
 //
 
-module pci32_config(rst_i, clk_i, irq_i, irq_o, cs_config_i, 
-	we_i, sel_i, adr_i, dat_i, dat_o, cs_bar0_o, cs_bar1_o, cs_bar2_o, irq_en_o);
+module ddbb128_config(rst_i, clk_i, irq_i, irq_o, cs_config_i, 
+	we_i, sel_i, adr_i, dat_i, dat_o,
+	cs_bar0_o, cs_bar1_o, cs_bar2_o, irq_en_o);
 input rst_i;
 input clk_i;
 input irq_i;
 output reg [31:0] irq_o;
 input cs_config_i;
 input we_i;
-input [3:0] sel_i;
+input [15:0] sel_i;
 input [31:0] adr_i;
-input [31:0] dat_i;
-output reg [31:0] dat_o;
+input [127:0] dat_i;
+output reg [127:0] dat_o;
+output reg irq_en_o;
 output reg cs_bar0_o;
 output reg cs_bar1_o;
 output reg cs_bar2_o;
-output reg irq_en_o;
 
 parameter CFG_BUS = 8'd0;
 parameter CFG_DEVICE = 5'd0;
@@ -75,7 +76,7 @@ parameter CFG_CLASS = 8'h03;						// 03 = display controller
 parameter CFG_CACHE_LINE_SIZE = 8'd8;		// 32-bit units
 parameter CFG_MIN_GRANT = 8'h00;
 parameter CFG_MAX_LATENCY = 8'h00;
-parameter CFG_IRQ_LINE = 8'd16;
+parameter CFG_IRQ_LINE = 8'hFF;
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
@@ -119,11 +120,11 @@ begin
 	stato_reg[10:9] = 2'b01;	// medium DEVSEL timing
 end
 
-reg [31:0] cfg_dat [0:63];
+reg [127:0] cfg_dat [0:31];
 reg [7:0] irq_line;
 
 initial begin
-	for (n1 = 0; n1 < 64; n1 = n1 + 1)
+	for (n1 = 0; n1 < 32; n1 = n1 + 1)
 		cfg_dat[n1] = 'd0;
 end
 
@@ -152,12 +153,12 @@ else begin
 
 	if (cs) begin
 		if (we_i)
-			case(adr_i[7:2])
-			5'h02:
+			case(adr_i[8:4])
+			5'h00:
 				begin
-					if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
-					if (sel_i[1]) cmd_reg[15:8] <= dat_i[15:8];
-					if (sel_i[3]) begin
+					if (sel_i[8]) cmd_reg[7:0] <= dat_i[7:0];
+					if (sel_i[9]) cmd_reg[15:8] <= dat_i[15:8];
+					if (sel_i[11]) begin
 						if (dat_i[8]) stat_reg[8] <= 1'b0;
 						if (dat_i[11]) stat_reg[11] <= 1'b0;
 						if (dat_i[12]) stat_reg[12] <= 1'b0;
@@ -166,59 +167,64 @@ else begin
 						if (dat_i[15]) stat_reg[15] <= 1'b0;
 					end
 				end
-			5'h04:
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar0 <= CFG_BAR0_MASK;
-				else begin
-					if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+			5'h01:
+				begin
+					if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
+						bar0 <= CFG_BAR0_MASK;
+					else begin
+						if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
+						if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
+						if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
+						if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+					end
+					if (&sel_i[7:4] && dat_i[63:32]==32'hFFFFFFFF)
+						bar1 <= CFG_BAR1_MASK;
+					else begin
+						if (sel_i[4])	bar1[7:0] <= dat_i[39:32];
+						if (sel_i[5])	bar1[15:8] <= dat_i[47:40];
+						if (sel_i[6])	bar1[23:16] <= dat_i[55:48];
+						if (sel_i[7])	bar1[31:24] <= dat_i[63:56];
+					end
+					if (&sel_i[11:8] && dat_i[95:64]==32'hFFFFFFFF)
+						bar2 <= CFG_BAR2_MASK;
+					else begin
+						if (sel_i[8])	bar2[7:0] <= dat_i[71:64];
+						if (sel_i[9])	bar2[15:8] <= dat_i[79:72];
+						if (sel_i[10])	bar2[23:16] <= dat_i[87:80];
+						if (sel_i[11])	bar2[31:24] <= dat_i[95:88];
+					end
 				end
-			5'h05:					
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar1 <= CFG_BAR1_MASK;
-				else begin
-					if (sel_i[0])	bar1[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar1[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar1[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar1[31:24] <= dat_i[31:24];
-				end
-			5'h06:					
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar2 <= CFG_BAR2_MASK;
-				else begin
-					if (sel_i[0])	bar2[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar2[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar2[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
-				end
-			5'h0F:
-				if (sel_i[0]) irq_line <= dat_i[7:0];
+			5'h03:
+				if (sel_i[12]) irq_line <= dat_i[103:96];
 			default:
-				cfg_dat[adr_i[7:2]] <= dat_i;
+				begin
+					if (sel_i[0]) cfg_dat[adr_i[8:4]][7:0] <= dat_i[7:0];
+					if (sel_i[1]) cfg_dat[adr_i[8:4]][15:8] <= dat_i[15:8];
+					if (sel_i[2]) cfg_dat[adr_i[8:4]][23:16] <= dat_i[23:16];
+					if (sel_i[3]) cfg_dat[adr_i[8:4]][31:24] <= dat_i[31:24];
+					if (sel_i[4]) cfg_dat[adr_i[8:4]][39:32] <= dat_i[39:32];
+					if (sel_i[5]) cfg_dat[adr_i[8:4]][47:40] <= dat_i[47:40];
+					if (sel_i[6]) cfg_dat[adr_i[8:4]][55:48] <= dat_i[55:48];
+					if (sel_i[7]) cfg_dat[adr_i[8:4]][63:56] <= dat_i[63:56];
+					if (sel_i[8]) cfg_dat[adr_i[8:4]][71:64] <= dat_i[71:64];
+					if (sel_i[9]) cfg_dat[adr_i[8:4]][79:72] <= dat_i[79:72];
+					if (sel_i[10]) cfg_dat[adr_i[8:4]][87:80] <= dat_i[87:80];
+					if (sel_i[11]) cfg_dat[adr_i[8:4]][95:88] <= dat_i[95:88];
+					if (sel_i[12]) cfg_dat[adr_i[8:4]][103:96] <= dat_i[103:96];
+					if (sel_i[13]) cfg_dat[adr_i[8:4]][111:104] <= dat_i[111:104];
+					if (sel_i[14]) cfg_dat[adr_i[8:4]][119:112] <= dat_i[119:112];
+					if (sel_i[15]) cfg_dat[adr_i[8:4]][127:120] <= dat_i[127:120];
+				end
 			endcase
 		else
-			case(adr_i[7:2])
-			5'h00:	dat_o <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
-			5'h01:	dat_o <= {stato_reg,cmdo_reg};
-			5'h02:	dat_o <= {
-				CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
-			5'h03:	dat_o <= {8'h00,
-				CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
-			5'h04:	dat_o <= bar0;
-			5'h05:	dat_o <= bar1;
-			5'h06:	dat_o <= bar2;
-			5'h07:	dat_o <= 32'hFFFFFFFF;
-			5'h08:	dat_o <= 32'hFFFFFFFF;
-			5'h09:	dat_o <= 32'hFFFFFFFF;
-			5'h0A:	dat_o <= 32'h0;
-			5'h0B:	dat_o <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
-			5'h0C:	dat_o <= CFG_ROM_ADDR;
-			5'h0D:	dat_o <= 32'h0;
-			5'h0E: 	dat_o <= 32'h0;
-			5'h0F: 	dat_o <= {8'd8,8'd0,8'd0,irq_line};
-			default:	dat_o <= cfg_dat[adr_i[7:2]];
+			case(adr_i[8:4])
+			5'h00:	dat_o <= {8'h00,
+				CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE,
+				stato_reg,cmdo_reg,CFG_DEVICE_ID,CFG_VENDOR_ID};
+			5'h01:	dat_o <= {32'hFFFFFFFF,bar2,bar1,bar0};
+			5'h02:	dat_o <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID,32'h0,64'hFFFFFFFFFFFFFFFF};
+			5'h03:	dat_o <= {8'd8,8'd0,8'd0,irq_line,32'd0,32'd0,CFG_ROM_ADDR};
+			default:	dat_o <= cfg_dat[adr_i[8:4]];
 			endcase
 	end
 end

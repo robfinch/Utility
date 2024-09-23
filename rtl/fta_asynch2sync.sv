@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -44,6 +44,39 @@ input fta_cmd_request128_t req_i;
 output fta_cmd_response128_t resp_o;
 output fta_cmd_request128_t req_o;
 input fta_cmd_response128_t resp_i;
+
+reg aer_i;
+
+always_ff @(posedge clk, posedge rst)
+if (rst) begin
+	req_o <= 'd0;
+	resp_o <= 'd0;
+	aer_i <= 'd0;
+end
+else begin
+	aer_i <= resp_i.ack|resp_i.err|resp_i.rty;
+	// If a cycle is pulsed, latch the request.
+	if (req_i.cyc)
+		req_o <= req_i;
+	// On an ack, clear the request
+	else if (resp_i.ack|resp_i.err|resp_i.rty)
+		req_o <= 'd0;
+	// On an ack, pulse the ack response
+	if ((resp_i.ack|resp_i.err|resp_i.rty) & ~aer_i)
+		resp_o <= resp_i;
+	else
+		resp_o <= 'd0;
+end
+
+endmodule
+
+module fta_asynch2sync256(rst, clk, req_i, resp_o, req_o, resp_i);
+input rst;
+input clk;
+input fta_cmd_request256_t req_i;
+output fta_cmd_response256_t resp_o;
+output fta_cmd_request256_t req_o;
+input fta_cmd_response256_t resp_i;
 
 reg aer_i;
 

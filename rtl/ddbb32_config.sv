@@ -36,7 +36,7 @@
 // ============================================================================
 //
 
-module pci32_config(rst_i, clk_i, irq_i, irq_o, cs_config_i, 
+module ddbb32_config(rst_i, clk_i, irq_i, irq_o, cs_config_i, 
 	we_i, sel_i, adr_i, dat_i, dat_o, cs_bar0_o, cs_bar1_o, cs_bar2_o, irq_en_o);
 input rst_i;
 input clk_i;
@@ -76,6 +76,11 @@ parameter CFG_CACHE_LINE_SIZE = 8'd8;		// 32-bit units
 parameter CFG_MIN_GRANT = 8'h00;
 parameter CFG_MAX_LATENCY = 8'h00;
 parameter CFG_IRQ_LINE = 8'd16;
+parameter CFG_IRQ_DEVICE = 8'd0;
+parameter CFG_IRQ_CORE = 6'd0;
+parameter CFG_IRQ_CHANNEL = 3'd0;
+parameter CFG_IRQ_PRIORITY = 4'd10;
+parameter CFG_IRQ_CAUSE = 8'd0;
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
@@ -93,6 +98,11 @@ reg parity_err_resp;
 reg serr_enable;
 reg int_disable;
 reg [7:0] latency_timer = 8'h00;
+reg [7:0] irq_device;
+reg [5:0] irq_core;
+reg [2:0] irq_channel;
+reg [3:0] irq_priority;
+reg [7:0] cause_code;
 
 always_comb
 begin
@@ -140,6 +150,11 @@ if (rst_i) begin
 	cmd_reg <= 16'h4003;
 	stat_reg <= 16'h0000;
 	irq_line <= CFG_IRQ_LINE;
+	irq_device <= CFG_IRQ_DEVICE;
+	irq_core <= CFG_IRQ_CORE;
+	irq_channel <= CFG_IRQ_CHANNEL;
+	irq_priority <= CFG_IRQ_PRIORITY;
+	cause_code <= CFG_IRQ_CAUSE;
 end
 else begin
 	io_space <= cmdo_reg[0];
@@ -194,7 +209,13 @@ else begin
 					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
 				end
 			5'h0F:
-				if (sel_i[0]) irq_line <= dat_i[7:0];
+				begin
+					//if (sel_i[0]) irq_line <= dat_i[7:0];
+					if (sel_i[0]) cause_code <= dat_i[7:0];
+					if (sel_i[1]) {irq_channel,irq_priority} <= dat_i[14:8];
+					if (sel_i[2]) irq_core <= dat_i[21:16];
+					if (sel_i[3]) irq_device <= dat_i[31:24];
+				end
 			default:
 				cfg_dat[adr_i[7:2]] <= dat_i;
 			endcase
@@ -217,14 +238,15 @@ else begin
 			5'h0C:	dat_o <= CFG_ROM_ADDR;
 			5'h0D:	dat_o <= 32'h0;
 			5'h0E: 	dat_o <= 32'h0;
-			5'h0F: 	dat_o <= {8'd8,8'd0,8'd0,irq_line};
+			5'h0F: 	dat_o <= {irq_device,2'd0,irq_core,1'b0,irq_channel,irq_priority,cause_code};//{8'd8,8'd0,8'd0,irq_line};
 			default:	dat_o <= cfg_dat[adr_i[7:2]];
 			endcase
 	end
 end
 
 always_comb
-	irq_o = {31'd0,irq_i & ~int_disable} << irq_line;
+	irq_o = {irq_device,2'd0,irq_core,1'b0,irq_channel,irq_priority,cause_code};
+//	irq_o = {31'd0,irq_i & ~int_disable} << irq_line;
 
 always_comb
 	cs_bar0_o = ((adr_i ^ bar0) & CFG_BAR0_MASK) == 'd0;

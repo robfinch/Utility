@@ -13,7 +13,6 @@ begin
 	szerr = 1'b0;
 	req32_o.om = req128_i.om;
 	req32_o.cmd = req128_i.cmd;
-	req32_o.cid = req128_i.cid;
 	req32_o.tid = req128_i.tid;
 	req32_o.bte = req128_i.bte;
 	req32_o.blen = req128_i.blen;
@@ -72,7 +71,6 @@ end
 
 always_comb
 begin
-	resp128_o.cid = resp32_i.cid;
 	resp128_o.tid = resp32_i.tid;
 	resp128_o.pri = resp32_i.pri;
 	resp128_o.stall = resp32_i.stall;

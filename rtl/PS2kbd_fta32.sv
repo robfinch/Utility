@@ -142,7 +142,6 @@ module PS2kbd_fta32(
 	input fta_cmd_request32_t req,
 	output fta_cmd_response32_t resp,
 	//-------------
-	output [31:0] irq_o,	// interrupt request (active high)
 	input kclk_i,	// keyboard clock from keyboard
 	output kclk_en,	// 1 = drive clock low
 	input kdat_i,	// keyboard data
@@ -172,7 +171,12 @@ parameter CFG_CLASS = 8'h09;						// 09 = input controller
 parameter CFG_CACHE_LINE_SIZE = 8'd8;		// 32-bit units
 parameter CFG_MIN_GRANT = 8'h00;
 parameter CFG_MAX_LATENCY = 8'h00;
-parameter CFG_IRQ_LINE = 8'd30;
+parameter CFG_IRQ_LINE = 8'd00;
+
+parameter CFG_IRQ_CORE = 6'd1;
+parameter CFG_IRQ_CHANNEL = 3'd0;
+parameter CFG_IRQ_PRIORITY = 4'd10;
+parameter CFG_IRQ_CAUSE = 8'd0;
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
@@ -220,6 +224,13 @@ wire rx_inh = 0;
 `endif
 wire [31:0] cfg_out;
 wire irq_en;
+reg irqa;
+reg [5:0] irq_core;
+reg [2:0] irq_channel;
+reg [3:0] irq_priority;
+reg [7:0] cause_code;
+wire irq_cd;
+reg irq_cdr;
 
 // Register inputs
 fta_cmd_request32_t reqd;
@@ -252,21 +263,25 @@ always_ff @(posedge clk_i)
 	cs_io = cs_io_i & req.cyc & req.stb && cs_kbd;
 
 always_ff @(posedge clk_i)
-	resp.ack <= (cs_io|cs_config) & reqd.cyc & reqd.stb;
+	resp.ack <= (cs_io|cs_config) ? reqd.cyc & reqd.stb : irqa;
 always_ff @(posedge clk_i)
-	resp.adr <= reqd.padr;
+	resp.adr <= (cs_io|cs_config) ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
 always_ff @(posedge clk_i)
-	resp.tid <= reqd.tid;
+	resp.tid <= (cs_io|cs_config) ? reqd.tid : 13'd0;//irqa ? {irq_o[21:16],irq_o[14:12],4'd0} : 13'd0;	// core,channel
 always_ff @(posedge clk_i)
-	resp.cid <= reqd.cid;
+	resp.err <= (cs_io|cs_config) ? fta_bus_pkg::OKAY : irqa ? fta_bus_pkg::IRQ : fta_bus_pkg::OKAY;
+always_ff @(posedge clk_i)
+	resp.pri <= (cs_io|cs_config) ? 4'd5 : 4'd5;//irqa ? irq_o[11:8] : 4'd5;		// priority
+always_ff @(posedge clk_i)
+	resp.adr <= (cs_io|cs_config) ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
+always_ff @(posedge clk_i)
+	resp.dat <= (cs_io|cs_config) ? dat_o : 32'd0;//irqa ? {24'h00,irq_o[7:0]} : 32'd0;
 assign resp.next = 1'b0;
 assign resp.stall = 1'b0;
 assign resp.rty = 1'b0;
-assign resp.err = fta_bus_pkg::OKAY;
-assign resp.pri = 4'd7;
-assign resp.dat = dat_o;
 
-pci32_config #(
+
+ddbb32_config #(
 	.CFG_BUS(CFG_BUS),
 	.CFG_DEVICE(CFG_DEVICE),
 	.CFG_FUNC(CFG_FUNC),
@@ -284,7 +299,11 @@ pci32_config #(
 	.CFG_CACHE_LINE_SIZE(CFG_CACHE_LINE_SIZE),
 	.CFG_MIN_GRANT(CFG_MIN_GRANT),
 	.CFG_MAX_LATENCY(CFG_MAX_LATENCY),
-	.CFG_IRQ_LINE(CFG_IRQ_LINE)
+	.CFG_IRQ_LINE(CFG_IRQ_LINE),
+	.CFG_IRQ_CORE(CFG_IRQ_CORE),
+	.CFG_IRQ_CHANNEL(CFG_IRQ_CHANNEL),
+	.CFG_IRQ_PRIORITY(CFG_IRQ_PRIORITY),
+	.CFG_IRQ_CAUSE(CFG_IRQ_CAUSE)
 )
 ucfg1
 (
@@ -310,14 +329,33 @@ always_ff @(posedge clk_i)
 if (cs_config)
 	dat_o <= cfg_out;
 else if (cs_io)
-	case(adr[3:2])
-	2'd0:	dat_o <= {24'h0,q[8:1]};
-	2'd1:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
-	2'd2:	dat_o <= {24'h0,q[8:1]};
-	2'd3:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
+	case(adr[4:2])
+	3'd0:	dat_o <= {24'h0,q[8:1]};
+	3'd1:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
+	3'd2:	dat_o <= {24'h0,q[8:1]};
+	3'd3:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
+	default:	dat_o <= 'd0;
 	endcase
 else
 	dat_o <= 'd0;
+
+change_det ucd1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(irq), .cd(irq_cd));
+
+always_comb
+	if ((irq_cd|irq_cdr) & !(cs_io|cs_config))
+		irqa = irq_en;
+	else
+		irqa = 1'b0;
+
+always_ff @(posedge clk_i)
+if (rst_i)
+	irq_cdr <= 1'b0;
+else begin
+	if (irq_cd)
+		irq_cdr <= 1'b1;
+	if (irqa)
+		irq_cdr <= 1'b0;
+end
 
 // Prohibit keyboard device from further transmits until
 // this character has been processed.
@@ -366,7 +404,7 @@ always_ff @(posedge clk_i) begin
 	else begin
 
 		// clear rx on write to status reg
-		if (cs_io && we && adr[3:2]==2'd1 && dati[7:0]==8'h00)
+		if (cs_io && we && adr[4:2]==2'd1 && dati[7:0]==8'h00)
 			q <= 11'h7FF;
 
 		// Receive state machine
@@ -475,7 +513,7 @@ always_ff @(posedge clk_i) begin
 			tc <= 0;
 		end
 		// write to status register clears transmit state
-		else if (cs_io && we && adr[3:2]==2'd1 && dati[7:0]==8'hFF) begin
+		else if (cs_io && we && adr[4:2]==2'd1 && dati[7:0]==8'hFF) begin
 			tc <= 1;
 			tx_oe <= 0;
 			klow <= 1'b0;
