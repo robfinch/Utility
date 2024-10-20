@@ -47,7 +47,7 @@
 //
 import fta_bus_pkg::*;
 
-module IOBridge256to32fta(rst_i, clk_i, s1_req, s1_resp, m_req, chresp );
+module IOBridge256to32fta(rst_i, clk_i, clk5x_i, s1_req, s1_resp, m_req, chresp );
 parameter CHANNELS = 2;
 parameter IDLE = 3'd0;
 parameter WAIT_ACK = 3'd1;
@@ -58,6 +58,7 @@ parameter ASYNCH = 1'b1;
 
 input rst_i;
 input clk_i;
+input clk5x_i;
 input fta_cmd_request256_t s1_req;
 output fta_cmd_response256_t s1_resp;
 output fta_cmd_request32_t m_req;
@@ -69,6 +70,7 @@ fta_respbuf32 #(CHANNELS) urespb1
 (
 	.rst(rst_i),
 	.clk(clk_i),
+	.clk5x(clk5x_i),
 	.resp(chresp),
 	.resp_o(respo)
 );
