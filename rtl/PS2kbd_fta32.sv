@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2005-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2005-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -137,8 +137,7 @@ module PS2kbd_fta32(
 	// WISHBONE/SoC bus interface 
 	input rst_i,
 	input clk_i,	// system clock
-	input cs_config_i,	// Config region circuit select
-	input cs_io_i,			// IO region circuit select
+	input cs_config_i,
 	input fta_cmd_request32_t req,
 	output fta_cmd_response32_t resp,
 	//-------------
@@ -153,7 +152,7 @@ parameter p5us = pClkFreq / 200000;		// number of clocks for 5us
 parameter p100us = pClkFreq / 10000;	// number of clocks for 100us
 
 parameter KBD_ADDR = 32'hFEDC0001;
-parameter KBD_ADDR_MASK = 32'h00FF0000;
+parameter KBD_ADDR_MASK = 32'hFFFFE000;
 
 parameter CFG_BUS = 8'd0;
 parameter CFG_DEVICE = 5'd30;
@@ -188,6 +187,7 @@ typedef enum logic [1:0] {
 	S_KBDRX_CAPTURE_BIT = 2'd2
 } kbd_state_t;
 
+reg cs_config;
 reg [31:0] dat_o;
 wire [31:0] kbd_addr;
 reg [13:0] os;	// one shot
@@ -234,6 +234,7 @@ reg irq_cdr;
 
 // Register inputs
 fta_cmd_request32_t reqd;
+fta_cmd_response32_t cfg_resp;
 reg we;
 reg [3:0] sel;
 reg [31:0] adr;
@@ -249,33 +250,29 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	reqd <= req;
 
-reg cs_config;
 reg cs_io;
 
 always_ff @(posedge clk_i)
-	cs_config = cs_config_i & req.cyc & req.stb &&
-		req.padr[27:20]==CFG_BUS &&
-		req.padr[19:15]==CFG_DEVICE &&
-		req.padr[14:12]==CFG_FUNC;
+	cs_config <= cs_config_i;
 
 wire cs_kbd;
-always_ff @(posedge clk_i)
-	cs_io = cs_io_i & req.cyc & req.stb && cs_kbd;
+always_comb
+	cs_io = cs_kbd;
 
 always_ff @(posedge clk_i)
-	resp.ack <= (cs_io|cs_config) ? reqd.cyc & reqd.stb : irqa;
+	resp.ack <= cfg_resp.ack ? 1'b1 : cs_io ? reqd.cyc & reqd.stb : irqa;
 always_ff @(posedge clk_i)
-	resp.adr <= (cs_io|cs_config) ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
+	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
 always_ff @(posedge clk_i)
-	resp.tid <= (cs_io|cs_config) ? reqd.tid : 13'd0;//irqa ? {irq_o[21:16],irq_o[14:12],4'd0} : 13'd0;	// core,channel
+	resp.tid <= cfg_resp.ack ? cfg_resp.tid : cs_io ? reqd.tid : 13'd0;//irqa ? {irq_o[21:16],irq_o[14:12],4'd0} : 13'd0;	// core,channel
 always_ff @(posedge clk_i)
-	resp.err <= (cs_io|cs_config) ? fta_bus_pkg::OKAY : irqa ? fta_bus_pkg::IRQ : fta_bus_pkg::OKAY;
+	resp.err <= cfg_resp.ack ? cfg_resp.err : cs_io ? fta_bus_pkg::OKAY : irqa ? fta_bus_pkg::IRQ : fta_bus_pkg::OKAY;
 always_ff @(posedge clk_i)
-	resp.pri <= (cs_io|cs_config) ? 4'd5 : 4'd5;//irqa ? irq_o[11:8] : 4'd5;		// priority
+	resp.pri <= cfg_resp.ack ? cfg_resp.pri : cs_io ? 4'd5 : 4'd5;//irqa ? irq_o[11:8] : 4'd5;		// priority
 always_ff @(posedge clk_i)
-	resp.adr <= (cs_io|cs_config) ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
+	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
 always_ff @(posedge clk_i)
-	resp.dat <= (cs_io|cs_config) ? dat_o : 32'd0;//irqa ? {24'h00,irq_o[7:0]} : 32'd0;
+	resp.dat <= cfg_resp.ack ? cfg_resp.dat : cs_io ? dat_o : 32'd0;//irqa ? {24'h00,irq_o[7:0]} : 32'd0;
 assign resp.next = 1'b0;
 assign resp.stall = 1'b0;
 assign resp.rty = 1'b0;
@@ -299,7 +296,6 @@ ddbb32_config #(
 	.CFG_CACHE_LINE_SIZE(CFG_CACHE_LINE_SIZE),
 	.CFG_MIN_GRANT(CFG_MIN_GRANT),
 	.CFG_MAX_LATENCY(CFG_MAX_LATENCY),
-	.CFG_IRQ_LINE(CFG_IRQ_LINE),
 	.CFG_IRQ_CORE(CFG_IRQ_CORE),
 	.CFG_IRQ_CHANNEL(CFG_IRQ_CHANNEL),
 	.CFG_IRQ_PRIORITY(CFG_IRQ_PRIORITY),
@@ -310,34 +306,27 @@ ucfg1
 	.rst_i(rst_i),
 	.clk_i(clk_i),
 	.irq_i(irq),
-	.irq_o(irq_o),
-	.cs_config_i(cs_config), 
-	.we_i(we),
-	.sel_i(sel),
-	.adr_i(adr),
-	.dat_i(dati),
-	.dat_o(cfg_out),
+	.cs_i(cs_config),
+	.req_i(reqd), 
+	.resp_o(cfg_resp),
 	.cs_bar0_o(cs_kbd),
 	.cs_bar1_o(),
-	.cs_bar2_o(),
-	.irq_en_o(irq_en)
+	.cs_bar2_o()
 );
 
 
 // register read path
 always_ff @(posedge clk_i)
-if (cs_config)
-	dat_o <= cfg_out;
-else if (cs_io)
+if (cs_io)
 	case(adr[4:2])
 	3'd0:	dat_o <= {24'h0,q[8:1]};
 	3'd1:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
 	3'd2:	dat_o <= {24'h0,q[8:1]};
 	3'd3:	dat_o <= {24'h0,~q[0],tc,~kack,4'b0,~^q[9:1]};
-	default:	dat_o <= 'd0;
+	default:	dat_o <= 32'd0;
 	endcase
 else
-	dat_o <= 'd0;
+	dat_o <= 32'd0;
 
 change_det ucd1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(irq), .cd(irq_cd));
 

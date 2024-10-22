@@ -1,9 +1,11 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2021-2023  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
+//
+//	flo144.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -30,59 +32,26 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
+//                                                                          
 // ============================================================================
-//
-import fta_bus_pkg::*;
 
-module ledport_fta64(rst, clk, cs, req, resp, led);
-input rst;
-input clk;
-input cs;
-input fta_cmd_request64_t req;
-output fta_cmd_response64_t resp;
-output reg [7:0] led;
+// Find last one
+module flo144(i, o);
+input [143:0] i;
+output reg [7:0] o;
 
-reg [25:0] count;
-reg ff1;
-
-always_ff @(posedge clk)
-if (rst)
-	count <= 26'd0;
-else begin
-	count <= count + 2'd1;
-end
-
-always_ff @(posedge clk)
-if (rst)
-	ff1 <= 1'b0;
-else begin
-	if (cs & req.we)
-		ff1 <= 1'b1;	
-end
-
-always_ff @(posedge clk)
-if (rst)
-	led <= 'd0;
-else begin
-	if (ff1==1'b0)
-		led <= {8{count[25]}};
-	if (cs & req.we)
-		led <= req.dat[7:0];
-end
-
-always_ff @(posedge clk)
-if (rst)
-	resp <= 'd0;
-else begin
-//	resp.cid <= req.cid;
-	resp.tid <= req.tid;		
-	resp.ack <= cs && (!req.we || req.cti==fta_bus_pkg::ERC);
-	resp.err <= fta_bus_pkg::OKAY;
-	resp.rty <= 1'd0;
-	resp.pri <= 4'd7;
-	resp.adr <= req.padr;
-	resp.dat <= 64'd0;
-end
+wire [5:0] o1,o2,o3;
+flo48 u1 (i[143:96],o1);
+flo48 u2 (i[95:48],o2);
+flo48 u3 (i[47:0],o3);
+always_comb
+if (o1==6'd63 && o2==6'd63 && o3==6'd63)
+	o <= 8'd255;
+else if (o1==6'd63 && o2==6'd63)
+	o <= o3;
+else if (o1==6'd63)
+  o <= 8'd48 + o2;
+else
+  o <= 8'd96 + o1;
 
 endmodule

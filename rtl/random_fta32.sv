@@ -96,17 +96,16 @@ import fta_bus_pkg::*;
 `define TRUE	1'b1
 `define FALSE	1'b0
 
-module random_fta32(rst_i, clk_i, cs_config_i, cs_io_i, req, resp);
+module random_fta32(rst_i, clk_i, cs_config_i, req, resp);
 input rst_i;
 input clk_i;
 input cs_config_i;
-input cs_io_i;
 input fta_cmd_request32_t req;
 output fta_cmd_response32_t resp;
 parameter pAckStyle = 1'b0;
 
 parameter IO_ADDR = 32'hFEE10001;
-parameter IO_ADDR_MASK = 32'h00FF0000;
+parameter IO_ADDR_MASK = 32'hFFFF0000;
 
 parameter CFG_BUS = 8'd0;
 parameter CFG_DEVICE = 5'd8;
@@ -143,17 +142,12 @@ wire cs_io;
 reg cs_config;
 reg cs_io_id;
 fta_cmd_request32_t reqd;
+fta_cmd_response32_t cfg_resp,resp1;
 
-always_ff @(posedge clk_i)
-	cs_config <= cs_config_i & req.cyc & req.stb &&
-		req.padr[27:20]==CFG_BUS &&
-		req.padr[19:15]==CFG_DEVICE &&
-		req.padr[14:12]==CFG_FUNC;
-
-always_ff @(posedge clk_i)
-	cs_io_id <= cs_io_i;
 always_comb
-	cs_rand <= cs_io_id && reqd.cyc && reqd.stb && cs_io;
+	cs_rand <= cs_io;
+always_ff @(posedge clk_i)
+	cs_config <= cs_config_i;
 always_ff @(posedge clk_i)
 	we <= req.we;
 always_ff @(posedge clk_i)
@@ -166,22 +160,30 @@ always_ff @(posedge clk_i)
 	reqd <= req;
 
 always_ff @(posedge clk_i)
-	resp.ack <= (cs_rand|cs_config) & reqd.cyc & reqd.stb & (~reqd.we || reqd.cti==fta_bus_pkg::ERC);
-vtdl #(.WID(6), .DEP(16)) urdyd3 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.cid), .q(resp.cid));
-vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) urdyd4 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.tid), .q(resp.tid));
-vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.padr), .q(resp.adr));
-assign resp.next = 1'b0;
-assign resp.stall = 1'b0;
-assign resp.rty = 1'b0;
-assign resp.err = fta_bus_pkg::OKAY;
-assign resp.pri = 4'd7;
-assign resp.dat = dat_o;
+	resp1.ack <= cs_rand & (~reqd.we || reqd.cti==fta_bus_pkg::ERC);
+//vtdl #(.WID(6), .DEP(16)) urdyd3 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.cid), .q(resp.cid));
+vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) urdyd4 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.tid), .q(resp1.tid));
+vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.padr), .q(resp1.adr));
+always_ff @(posedge clk_i)
+if (rst_i)
+	resp <= {$bits(fta_cmd_response32_t){1'b0}};
+else begin
+	resp.ack <= cfg_resp.ack ? 1'b1 : resp1.ack;
+	resp.tid <= cfg_resp.ack ? cfg_resp.tid : resp1.tid;
+	resp.adr <= cfg_resp.ack ? cfg_resp.adr : resp1.adr;
+	resp.next <= 1'b0;
+	resp.stall <= 1'b0;
+	resp.rty <= 1'b0;
+	resp.err <= fta_bus_pkg::OKAY;
+	resp.pri <= cfg_resp.ack ? cfg_resp.pri : 4'd7;
+	resp.dat <= cfg_resp.ack ? cfg_resp.dat : dat_o;
+end
 
 
 //always @*
 //	ack_o <= cs ? ack : pAckStyle;
 
-pci32_config #(
+ddbb32_config #(
 	.CFG_BUS(CFG_BUS),
 	.CFG_DEVICE(CFG_DEVICE),
 	.CFG_FUNC(CFG_FUNC),
@@ -205,18 +207,13 @@ ucfg1
 (
 	.rst_i(rst_i),
 	.clk_i(clk_i),
+	.cs_i(cs_config),
 	.irq_i(1'b0),
-	.irq_o(),
-	.cs_config_i(cs_config), 
-	.we_i(we),
-	.sel_i(sel),
-	.adr_i(adr),
-	.dat_i(dat),
-	.dat_o(cfg_out),
+	.req_i(reqd),
+	.resp_o(cfg_resp),
 	.cs_bar0_o(cs_io),
 	.cs_bar1_o(),
-	.cs_bar2_o(),
-	.irq_en_o()
+	.cs_bar2_o()
 );
 
 

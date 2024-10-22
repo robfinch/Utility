@@ -40,19 +40,18 @@
 import const_pkg::*;
 import fta_bus_pkg::*;
 
-module ddbb32_config(rst_i, clk_i, irq_i, cs_i, req_i, resp_o,
+module ddbb64_config(rst_i, clk_i, irq_i, cs_i, req_i, resp_o,
 	cs_bar0_o, cs_bar1_o, cs_bar2_o);
 input rst_i;
 input clk_i;
 input [1:0] irq_i;
 input cs_i;
-input fta_cmd_request32_t req_i;
-output fta_cmd_response32_t resp_o;
+input fta_cmd_request64_t req_i;
+output fta_cmd_response64_t resp_o;
 output reg cs_bar0_o;
 output reg cs_bar1_o;
 output reg cs_bar2_o;
 
-parameter CFG_CS = 4'hD;
 parameter CFG_BUS = 8'd0;
 parameter CFG_DEVICE = 5'd0;
 parameter CFG_FUNC = 3'd0;
@@ -82,7 +81,7 @@ parameter CFG_IRQ_CHANNEL = 3'd0;
 parameter CFG_IRQ_PRIORITY = 4'd10;
 parameter CFG_IRQ_CAUSE = 8'd0;
 
-parameter CFG_ROM_FILENAME = "ddbb32_config.mem";
+parameter CFG_ROM_FILENAME = "ddbb64_config.mem";
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
@@ -119,13 +118,13 @@ wire data_valid;
 // RAM / ROM signals
 wire rsta = rst_i;
 wire clka = clk_i;
-wire [3:0] wea = {4{req_i.we & cs_config_i}} && req_i.sel && req_i.padr[11:9]==3'd0;
+wire [7:0] wea = {8{req_i.we & cs_config_i}} && req_i.sel && req_i.padr[11:9]==3'd0;
 wire ena = 1'b1;
 wire [9:0] addra = req_i.padr[11:2];
-wire [31:0] dina = req_i.dat;
-wire [31:0] douta;
+wire [63:0] dina = req_i.dat;
+wire [63:0] douta;
 
-reg [31:0] dat_o;
+reg [63:0] dat_o;
 
 // FTA bus interface
 wire rd_ack, wr_ack;
@@ -234,8 +233,8 @@ else begin
 
 	if (cs) begin
 		if (req_i.we)
-			case(req_i.padr[11:2])
-			10'h02:
+			case(req_i.padr[11:3])
+			9'h01:
 				begin
 					if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
 					if (sel_i[1]) cmd_reg[15:8] <= dat_i[15:8];
@@ -248,25 +247,26 @@ else begin
 						if (dat_i[15]) stat_reg[15] <= 1'b0;
 					end
 				end
-			10'h04:
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar0 <= CFG_BAR0_MASK;
-				else begin
-					if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+			9'h02:
+				begin
+					if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
+						bar0 <= CFG_BAR0_MASK;
+					else begin
+						if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
+						if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
+						if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
+						if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+					end
+					if (&sel_i[7:4] && dat_i[63:32]==32'hFFFFFFFF)
+						bar1 <= CFG_BAR1_MASK;
+					else begin
+						if (sel_i[0])	bar1[7:0] <= dat_i[39:32];
+						if (sel_i[1])	bar1[15:8] <= dat_i[47:40];
+						if (sel_i[2])	bar1[23:16] <= dat_i[55:48];
+						if (sel_i[3])	bar1[31:24] <= dat_i[63:56];
+					end
 				end
-			10'h05:					
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar1 <= CFG_BAR1_MASK;
-				else begin
-					if (sel_i[0])	bar1[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar1[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar1[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar1[31:24] <= dat_i[31:24];
-				end
-			10'h06:
+			9'h03:
 				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
 					bar2 <= CFG_BAR2_MASK;
 				else begin
@@ -276,10 +276,16 @@ else begin
 					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
 				end
 			// IRQ bus controls
-			10'h10:	if (&sel_i[3:0]) irq_info[3'd0][31:0] <= dat_i;
-			10'h11:	if (&sel_i[3:0]) irq_info[3'd0][63:32] <= dat_i;
-			10'h12:	if (&sel_i[3:0]) irq_info[3'd1][31:0] <= dat_i;
-			10'h13:	if (&sel_i[3:0]) irq_info[3'd1][63:32] <= dat_i;
+			9'h8:	
+				begin
+					if (&sel_i[3:0]) irq_info[3'd0][31: 0] <= dat_i[31: 0];
+					if (&sel_i[7:4]) irq_info[3'd0][63:32] <= dat_i[63:32];
+				end
+			9'h9:
+				begin
+					if (&sel_i[3:0]) irq_info[3'd1][31: 0] <= dat_i[31: 0];
+					if (&sel_i[7:4]) irq_info[3'd1][63:32] <= dat_i[63:32];
+				end
 			/*
 			10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
 			10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
@@ -290,27 +296,52 @@ else begin
 				;
 			endcase
 		else
-			case(adr_i[11:2])
-			10'h00:	dat_o <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
-			10'h01:	dat_o <= {stato_reg,cmdo_reg};
-			10'h02:	dat_o <= {
-				CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
-			10'h03:	dat_o <= {8'h00,
-				CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
-			10'h04:	dat_o <= bar0;
-			10'h05:	dat_o <= bar1;
-			10'h06:	dat_o <= bar2;
-			10'h07:	dat_o <= 32'hFFFFFFFF;
-			10'h08:	dat_o <= 32'hFFFFFFFF;
-			10'h09:	dat_o <= 32'hFFFFFFFF;
-			10'h0A:	dat_o <= 32'h0;
-			10'h0B:	dat_o <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
-			10'h0C:	dat_o <= CFG_ROM_ADDR;
-			10'h0D:	dat_o <= 32'h0;
-			10'h10:	dat_o <= irq_info[3'd0][31:0];
-			10'h11:	dat_o <= irq_info[3'd0][63:32];
-			10'h12:	dat_o <= irq_info[3'd1][31:0];
-			10'h13:	dat_o <= irq_info[3'd1][63:32];
+			case(adr_i[11:3])
+			9'h00:
+				begin
+					dat_o[31: 0] <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
+					dat_o[63:32] <= {stato_reg,cmdo_reg};
+				end
+			9'h01:
+				begin
+					dat_o[31: 0] <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
+					dat_o[63:32] <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
+				end
+			9'h02:
+				begin
+					dat_o[31: 0] <= bar0;
+					dat_o[63:32] <= bar1;
+				end
+			9'h03:
+				begin
+					dat_o[31: 0] <= bar2;
+					dat_o[63:32] <= 32'hFFFFFFFF;
+				end
+			9'h04:
+				begin
+					dat_o[31: 0] <= 32'hFFFFFFFF;
+					dat_o[63:32] <= 32'hFFFFFFFF;
+				end
+			9'h05:
+				begin
+					dat_o[31: 0] <= 32'h0;
+					dat_o[63:32] <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
+				end
+			9'h06:
+				begin
+					dat_o[31: 0] <= CFG_ROM_ADDR;
+					dat_o[63:32] <= 32'h0;
+				end
+			9'h08:
+				begin
+					dat_o[31: 0] <= irq_info[3'd0][31: 0];
+					dat_o[63:32] <= irq_info[3'd0][63:32];
+				end
+			9'h09:
+				begin
+					dat_o[31: 0] <= irq_info[3'd1][31: 0];
+					dat_o[63:32] <= irq_info[3'd1][63:32];
+				end
 			/*
 			10'h14:	dat_o <= irq_info[3'd2][31:0];
 			10'h15:	dat_o <= irq_info[3'd2][63:32];
@@ -422,12 +453,12 @@ if (NIRQ > 0)
       .PROG_EMPTY_THRESH(10),    // DECIMAL
       .PROG_FULL_THRESH(10),     // DECIMAL
       .RD_DATA_COUNT_WIDTH(5),   // DECIMAL
-      .READ_DATA_WIDTH($bits(fta_cmd_response32_t)),      // DECIMAL
+      .READ_DATA_WIDTH($bits(fta_cmd_response64_t)),      // DECIMAL
       .READ_MODE("fwft"),         // String
       .SIM_ASSERT_CHK(0),        // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
       .USE_ADV_FEATURES("1707"), // String
       .WAKEUP_TIME(0),           // DECIMAL
-      .WRITE_DATA_WIDTH($bits(fta_cmd_response32_t)),     // DECIMAL
+      .WRITE_DATA_WIDTH($bits(fta_cmd_response64_t)),     // DECIMAL
       .WR_DATA_COUNT_WIDTH(5)    // DECIMAL
    )
    xpm_fifo_sync_inst (
@@ -533,7 +564,7 @@ generate begin : gROM
    // Xilinx Parameterized Macro, version 2022.2
 if (ROM)
    xpm_memory_spram #(
-      .ADDR_WIDTH_A(10),             // DECIMAL
+      .ADDR_WIDTH_A(9),             // DECIMAL
       .AUTO_SLEEP_TIME(0),           // DECIMAL
       .BYTE_WRITE_WIDTH_A(8),       	// DECIMAL
       .CASCADE_HEIGHT(0),            // DECIMAL
@@ -542,9 +573,9 @@ if (ROM)
       .MEMORY_INIT_PARAM("0"),       // String
       .MEMORY_OPTIMIZATION("true"),  // String
       .MEMORY_PRIMITIVE("auto"),     // String
-      .MEMORY_SIZE(8*4096),          // DECIMAL
+      .MEMORY_SIZE(64*512),          // DECIMAL
       .MESSAGE_CONTROL(0),           // DECIMAL
-      .READ_DATA_WIDTH_A(32),       // DECIMAL
+      .READ_DATA_WIDTH_A(64),       // DECIMAL
       .READ_LATENCY_A(2),            // DECIMAL
       .READ_RESET_VALUE_A("0"),      // String
       .RST_MODE_A("SYNC"),           // String
@@ -552,7 +583,7 @@ if (ROM)
       .USE_MEM_INIT(1),              // DECIMAL
       .USE_MEM_INIT_MMI(0),          // DECIMAL
       .WAKEUP_TIME("disable_sleep"), // String
-      .WRITE_DATA_WIDTH_A(32),       // DECIMAL
+      .WRITE_DATA_WIDTH_A(64),       // DECIMAL
       .WRITE_MODE_A("read_first"),   // String
       .WRITE_PROTECT(1)              // DECIMAL
    )

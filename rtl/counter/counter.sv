@@ -1,9 +1,15 @@
+`timescale 1ns / 1ps
 // ============================================================================
+//
 //        __
-//   \\__/ o\    (C) 2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2007-2023  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
+//
+//
+// counter.sv
+// - generic up counter
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -30,59 +36,63 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
+//                                                                          
 // ============================================================================
-//
-import fta_bus_pkg::*;
 
-module ledport_fta64(rst, clk, cs, req, resp, led);
+module counter(rst, clk, ce, ld, d, q, tc);
+parameter WID=8;
+parameter pMaxCnt={WID{1'b1}};
 input rst;
 input clk;
-input cs;
-input fta_cmd_request64_t req;
-output fta_cmd_response64_t resp;
-output reg [7:0] led;
+input ce;
+input ld;
+input [WID:1] d;
+output [WID:1] q;
+reg [WID:1] q;
+output tc;
 
-reg [25:0] count;
-reg ff1;
+assign tc = &q;
 
 always_ff @(posedge clk)
 if (rst)
-	count <= 26'd0;
-else begin
-	count <= count + 2'd1;
+	q <= 1'b0;
+else if (ce) begin
+	if (ld)
+		q <= d;
+	else if (tc)
+		q <= {WID{1'b0}};
+	else
+		q <= q + 1'b1;
 end
 
-always_ff @(posedge clk)
-if (rst)
-	ff1 <= 1'b0;
-else begin
-	if (cs & req.we)
-		ff1 <= 1'b1;	
-end
+endmodule
+
+module counter_ald(rst, clk, ce, ld, d, q, tc);
+parameter WID=8;
+parameter pMaxCnt={WID{1'b1}};
+input rst;
+input clk;
+input ce;
+input ld;
+input [WID:1] d;
+output [WID:1] q;
+reg [WID:1] q;
+output tc;
+
+assign tc = &q;
 
 always_ff @(posedge clk)
 if (rst)
-	led <= 'd0;
+	q <= 1'b0;
 else begin
-	if (ff1==1'b0)
-		led <= {8{count[25]}};
-	if (cs & req.we)
-		led <= req.dat[7:0];
-end
-
-always_ff @(posedge clk)
-if (rst)
-	resp <= 'd0;
-else begin
-//	resp.cid <= req.cid;
-	resp.tid <= req.tid;		
-	resp.ack <= cs && (!req.we || req.cti==fta_bus_pkg::ERC);
-	resp.err <= fta_bus_pkg::OKAY;
-	resp.rty <= 1'd0;
-	resp.pri <= 4'd7;
-	resp.adr <= req.padr;
-	resp.dat <= 64'd0;
+	if (ld)
+		q <= d;
+	else if (ce) begin
+		if (tc)
+			q <= {WID{1'b0}};
+		else
+			q <= q + 1'b1;
+	end
 end
 
 endmodule
