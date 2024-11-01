@@ -1,10 +1,15 @@
 `timescale 1ns / 1ps
 // ============================================================================
+//
 //        __
-//   \\__/ o\    (C) 2005-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2007-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
+//
+//
+// ud_counter.sv
+// - generic up/down counter
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -33,58 +38,31 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //                                                                          
 // ============================================================================
-//
-module roundRobin(rst, clk, ce, req, lock, sel, sel_enc);
-parameter N = 8;
-input rst;				// reset
-input clk;				// clock
-input ce;				// clock enable
-input [N-1:0] req;		// request
-input [N-1:0] lock;		// lock selection
-output reg [N-1:0] sel;		// select, one hot
-output reg [$clog2(N):0] sel_enc;	// select, encoded
 
-integer n;
-reg [N-1:0] nextGrant;	// unrotated value of grant
-reg [N*2-1:0] rgrnts;
-reg [N*2-1:0] reqs;
-reg [N*2-1:0] sels;
-reg [N-1:0] base;
-
-always_comb
-	reqs = {req,req};
-always_comb
-	rgrnts = reqs & ~(reqs-base);
-// nextGrant should be one-hot
-always_comb
-	nextGrant = {rgrnts[N*2-1:N]|rgrnts[N-1:0]};
+module ud_counter(rst, clk, ce, ld, cu, cd, d, q);
+parameter WID=8;
+parameter pMaxCnt={WID{1'b1}};
+input rst;
+input clk;
+input ce;
+input ld;
+input cu;
+input cd;
+input [WID:1] d;
+output reg [WID:1] q;
 
 always_ff @(posedge clk)
-	if (rst)
-		base <= 2'd1;
-	else begin
-		if ((lock & sel)=='d0)
-			base <= {base[N-2:0],base[N-1]};
-	end
-
-// Assign the next owner, if isn't locked
-always_ff @(posedge clk)
-	if (rst)
-		sel <= 'h0;
-	else if (ce)
-		if ((lock & sel)=='d0) begin
-			sel <= nextGrant;
-		end
-
-always_ff @(posedge clk)
-	if (rst)
-		sel_enc <= 'd0;
-	else if (ce)
-		if ((lock & sel)=='d0) begin
-			sel_enc <= {$clog2(N)+1{1'b1}};
-			for (n = 0; n < N; n = n + 1)
-				if (nextGrant[n])
-					sel_enc <= n;
-			end
+if (rst)
+	q <= 1'b0;
+else if (ce) begin
+	if (ld)
+		q <= d;
+	else
+		case({cu,cd})
+		2'b01:	q <= q - 2'd1;
+		2'b10:	q <= q + 2'd1;
+		default:	;
+		endcase
+end
 
 endmodule

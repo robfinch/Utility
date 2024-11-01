@@ -104,7 +104,7 @@ reg int_disable;
 reg [7:0] latency_timer = 8'h00;
 reg [NIRQ-1:0] irqf;
 reg [5:0] irq_timer [0:NIRQ-1];
-fta_cmd_response32_t irq_resp, irq_resp1;
+fta_cmd_response64_t irq_resp, irq_resp1;
 wire cs_config_i;
 
 // IRQ FIFO signals
@@ -131,8 +131,8 @@ wire rd_ack, wr_ack;
 wire [31:0] adr3;
 fta_asid_t asid3;
 fta_tranid_t tid3;
-wire [3:0] sel_i = req_i.sel;
-wire [31:0] dat_i = req_i.dat;
+wire [7:0] sel_i = req_i.sel;
+wire [63:0] dat_i = req_i.dat;
 wire [31:0] adr_i = req_i.padr;
 
 assign cs_config_i = cs_i && req_i.cyc &&
@@ -148,7 +148,7 @@ vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(2), .d(cs_config_i &
 always_ff @(posedge clk_i)
 	resp_o.ack <= (rd_ack|wr_ack);
 
-vtdl #(.WID($bits(fta_asid_t)), .DEP(16)) udlyasid (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? 16'h0 : req_i.asid), .q(asid3));
+vtdl #(.WID($bits(fta_asid_t)), .DEP(16)) udlyasid (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? 12'h0 : req_i.asid), .q(asid3));
 vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? irq_resp.tid : req_i.tid), .q(tid3));
 vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? irq_resp.adr : req_i.padr), .q(adr3));
 always_ff @(posedge clk_i)

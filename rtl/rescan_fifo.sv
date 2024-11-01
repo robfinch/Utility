@@ -1,10 +1,11 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2005-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2008-2024  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
+//
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -31,60 +32,64 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//                                                                          
+//
 // ============================================================================
 //
-module roundRobin(rst, clk, ce, req, lock, sel, sel_enc);
-parameter N = 8;
-input rst;				// reset
-input clk;				// clock
-input ce;				// clock enable
-input [N-1:0] req;		// request
-input [N-1:0] lock;		// lock selection
-output reg [N-1:0] sel;		// select, one hot
-output reg [$clog2(N):0] sel_enc;	// select, encoded
+module rescan_fifo(wrst, wclk, wr, din, rrst, rclk, rd, dout, cnt);
+parameter WIDTH=128;
+parameter DEPTH=256;
+parameter pRamStyle = "auto";
+input wrst;
+input wclk;
+input wr;
+input [WIDTH-1:0] din;
+input rrst;
+input rclk;
+input rd;
+output [WIDTH-1:0] dout;
+output [$clog2(DEPTH)-1:0] cnt;
+reg [$clog2(DEPTH)-1:0] cnt;
 
-integer n;
-reg [N-1:0] nextGrant;	// unrotated value of grant
-reg [N*2-1:0] rgrnts;
-reg [N*2-1:0] reqs;
-reg [N*2-1:0] sels;
-reg [N-1:0] base;
+/*
+always_comb
+if (DEPTH != ({15'd0,1'b1} << ($clog2(DEPTH)))) begin
+	$display("rescan_fifo: DEPTH must be power of two");
+	$finish;
+end
+*/
+reg [$clog2(DEPTH)-1:0] wr_ptr;
+reg [$clog2(DEPTH)-1:0] rd_ptr,rrd_ptr;
+(* ram_style=pRamStyle *)
+reg [WIDTH-1:0] mem [0:DEPTH-1];
 
-always_comb
-	reqs = {req,req};
-always_comb
-	rgrnts = reqs & ~(reqs-base);
-// nextGrant should be one-hot
-always_comb
-	nextGrant = {rgrnts[N*2-1:N]|rgrnts[N-1:0]};
+wire [$clog2(DEPTH)-1:0] wr_ptr_p1 = wr_ptr + 2'd1;
+wire [$clog2(DEPTH)-1:0] rd_ptr_p1 = rd_ptr + 2'd1;
+reg [$clog2(DEPTH)-1:0] rd_ptrs;
 
-always_ff @(posedge clk)
-	if (rst)
-		base <= 2'd1;
-	else begin
-		if ((lock & sel)=='d0)
-			base <= {base[N-2:0],base[N-1]};
+always_ff @(posedge wclk)
+	if (wrst)
+		wr_ptr <= {$clog2(DEPTH){1'b0}};
+	else if (wr) begin
+		mem[wr_ptr] <= din;
+		wr_ptr <= wr_ptr_p1;
 	end
+always_ff @(posedge wclk)		// synchronize read pointer to wclk domain
+	rd_ptrs <= rd_ptr;
 
-// Assign the next owner, if isn't locked
-always_ff @(posedge clk)
-	if (rst)
-		sel <= 'h0;
-	else if (ce)
-		if ((lock & sel)=='d0) begin
-			sel <= nextGrant;
-		end
+always_ff @(posedge rclk)
+	if (rrst)
+		rd_ptr <= {$clog2(DEPTH){1'b0}};
+	else if (rd)
+		rd_ptr <= rd_ptr_p1;
+always_ff @(posedge rclk)
+	rrd_ptr <= rd_ptr;
 
-always_ff @(posedge clk)
-	if (rst)
-		sel_enc <= 'd0;
-	else if (ce)
-		if ((lock & sel)=='d0) begin
-			sel_enc <= {$clog2(N)+1{1'b1}};
-			for (n = 0; n < N; n = n + 1)
-				if (nextGrant[n])
-					sel_enc <= n;
-			end
+assign dout = mem[rrd_ptr[$clog2(DEPTH)-1:0]];
+
+always_comb
+	if (rd_ptrs > wr_ptr)
+		cnt <= wr_ptr + (DEPTH - rd_ptrs);
+	else
+		cnt <= wr_ptr - rd_ptrs;
 
 endmodule

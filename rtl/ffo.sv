@@ -1,6 +1,6 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2021-2022  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2021-2023  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -92,13 +92,13 @@ output reg [5:0] o;
 wire [4:0] o1,o2;
 ffo24 u1 (i[47:24],o1);
 ffo24 u2 (i[23:0],o2);
-always @*
+always_comb
 if (o1==5'd31 && o2==5'd31)
-    o <= 6'd63;
+  o <= 6'd63;
 else if (o1==5'd31)
-    o <= o2;
+  o <= o2;
 else
-    o <= 5'd24 + o1;
+  o <= 5'd24 + o1;
 
 endmodule
 
@@ -138,3 +138,21 @@ else
   o <= 8'd96 + o1;
 
 endmodule
+
+module ffo192(i, o);
+input [191:0] i;
+output reg [7:0] o;
+
+wire [6:0] o1,o2;
+ffo96 u1 (i[191:96],o1);
+ffo96 u2 (i[95:0],o2);
+always @*
+if (o1==7'd127 && o2==7'd127)
+    o <= 8'd255;
+else if (o1==7'd127)
+    o <= o2;
+else
+    o <= 7'd96 + o1;
+
+endmodule
+
