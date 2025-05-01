@@ -40,20 +40,19 @@
 import const_pkg::*;
 import fta_bus_pkg::*;
 
-module ddbb32_config(rst_i, clk_i, irq_i, cs_i, req_i, resp_o,
-	cs_bar0_o, cs_bar1_o, cs_bar2_o, irq_info);
+module ddbb32_config(rst_i, clk_i, irq_i, cs_i, resp_busy_i, req_i, resp_o,
+	cs_bar0_o, cs_bar1_o, cs_bar2_o);
 input rst_i;
 input clk_i;
-input [1:0] irq_i;
+input [3:0] irq_i;
 input cs_i;
+input resp_busy_i;
 input fta_cmd_request32_t req_i;
 output fta_cmd_response32_t resp_o;
 output reg cs_bar0_o;
 output reg cs_bar1_o;
 output reg cs_bar2_o;
-output reg [47:0] irq_info [0:3];
 
-parameter CFG_CS = 4'hD;
 parameter CFG_BUS = 8'd0;
 parameter CFG_DEVICE = 5'd0;
 parameter CFG_FUNC = 3'd0;
@@ -83,15 +82,15 @@ parameter CFG_IRQ_CHANNEL = 3'd0;
 parameter CFG_IRQ_PRIORITY = 4'd10;
 parameter CFG_IRQ_CAUSE = 8'd0;
 
-parameter CFG_ROM_FILENAME = "ddbb32_config.mem";
+parameter CFG_ROM_FILENAME = "ddbb64_config.mem";
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
 parameter MSIX = 1'b0;
-parameter ROM = 0;
 parameter NIRQ = 0;
+parameter ROM = 0;
 
-integer n1,n2,n3;
+integer n1,n2,n3,n4;
 reg sleep;								// put ROM to sleep
 reg [31:0] bar0;
 reg [31:0] bar1;
@@ -106,8 +105,11 @@ reg int_disable;
 reg [7:0] latency_timer = 8'h00;
 reg [NIRQ-1:0] irqf;
 reg [5:0] irq_timer [0:NIRQ-1];
-fta_cmd_response32_t irq_resp, irq_resp1;
+fta_cmd_response64_t irq_resp;
+fta_imessage_t irq_resp2, irq_resp1;
 wire cs_config_i;
+reg [NIRQ-1:0] irq_req;
+reg [NIRQ-1:0] irq_i2;
 
 // IRQ FIFO signals
 wire rst = rst_i;
@@ -116,71 +118,66 @@ reg rd_en,wr_en,rd_en1,wr_en1;
 reg irq_sleep;
 wire rd_rst_busy,wr_rst_busy;
 wire data_valid;
+wire empty;
 
 // RAM / ROM signals
 wire rsta = rst_i;
 wire clka = clk_i;
-wire [3:0] wea = {4{req_i.we & cs_config_i}} && req_i.sel && req_i.adr[11:9]==3'd0;
+wire [7:0] wea = {8{req_i.we & cs_config_i}} && req_i.sel && req_i.adr[13:9]==5'd0;
 wire ena = 1'b1;
-wire [9:0] addra = req_i.adr[11:2];
-wire [31:0] dina = req_i.dat;
-wire [31:0] douta;
+wire [10:0] addra = req_i.adr[13:3];
+wire [63:0] dina = req_i.dat;
+wire [63:0] douta;
 
-reg [31:0] dat_o;
+reg [63:0] dat_o;
 
 // FTA bus interface
 wire rd_ack, wr_ack;
 wire [31:0] adr3;
 fta_asid_t asid3;
 fta_tranid_t tid3;
-wire [3:0] sel_i = req_i.sel;
-wire [31:0] dat_i = req_i.dat;
-wire [31:0] adr_i = req_i.padr;
+wire [7:0] sel_i = req_i.sel;
+wire [63:0] dat_i = req_i.dat;
+wire [31:0] adr_i = req_i.adr;
 
 assign cs_config_i = cs_i && req_i.cyc &&
-		req_i.padr[27:20]==CFG_BUS &&
-		req_i.padr[19:15]==CFG_DEVICE &&
-		req_i.padr[14:12]==CFG_FUNC;
+		req_i.adr[29:22]==CFG_BUS &&
+		req_i.adr[21:17]==CFG_DEVICE &&
+		req_i.adr[16:14]==CFG_FUNC;
 
-assign resp_o.dat = dat_o;
 wire erc = req_i.cti==ERC;
 
-vtdl #(.WID(1), .DEP(16)) udlyc (.clk(clk_i), .ce(1'b1), .a(2), .d((cs_config_i & ~req_i.we) | rd_en), .q(rd_ack));
-vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(2), .d(cs_config_i &  req_i.we & erc), .q(wr_ack));
-always_ff @(posedge clk_i)
+vtdl #(.WID(1), .DEP(16)) udlyc (.clk(clk_i), .ce(1'b1), .a(0), .d(cs & ~req_i.we), .q(rd_ack));
+vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(0), .d(cs &  req_i.we & erc), .q(wr_ack));
+always_comb
 	resp_o.ack <= (rd_ack|wr_ack);
 
-vtdl #(.WID($bits(fta_asid_t)), .DEP(16)) udlyasid (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? 16'h0 : req_i.asid), .q(asid3));
-vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? irq_resp.tid : req_i.tid), .q(tid3));
-vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(2), .d(rd_en ? irq_resp.adr : req_i.padr), .q(adr3));
+vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
+vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.adr), .q(adr3));
 always_ff @(posedge clk_i)
-	resp_o.asid <= asid3;
-always_ff @(posedge clk_i)
+if (irq_resp.ack) begin
+	resp_o.tid <= irq_resp.tid;
+	resp_o.adr <= irq_resp.adr;
+	resp_o.dat <= irq_resp.dat;
+	resp_o.err <= fta_bus_pkg::IRQ;
+end
+else if (resp_o.ack) begin
 	resp_o.tid <= tid3;
-always_ff @(posedge clk_i)
 	resp_o.adr <= adr3;
+	resp_o.dat <= dat_o;
+	resp_o.err = fta_bus_pkg::OKAY;
+end
+else begin
+	resp_o.tid <= 13'd0;
+	resp_o.adr <= 64'd0;
+	resp_o.err = fta_bus_pkg::OKAY;
+end
 always_comb resp_o.next = 1'd0;
 always_comb resp_o.stall = 1'd0;
-always_comb resp_o.err = fta_bus_pkg::OKAY;
 always_comb resp_o.rty = 1'd0;
 always_comb resp_o.pri = 4'd7;
 
-typedef struct packed {
-	logic [5:0] icno;
-	logic resv2;
-	logic [5:0] pri;
-	logic [2:0] swstk;
-	// source
-	logic [15:0] dat;
-	logic [1:0] om;
-	logic [1:0] resv1;
-	logic [11:0] vecno;
-} irq_info_t;
-
-irq_info_t [3:0] irq_infos;
-
-always_comb
-	irq_info = irq_infos;
+fta_imessage2_t [7:0] irq_info;
 
 always_comb
 begin
@@ -225,6 +222,7 @@ if (rst_i) begin
 	bar2 <= CFG_BAR2;
 	cmd_reg <= 16'h4003;
 	stat_reg <= 16'h0000;
+	irq_req <= 4'b0;
 end
 else begin
 	io_space <= cmdo_reg[0];
@@ -233,10 +231,13 @@ else begin
 	parity_err_resp <= cmdo_reg[6];
 	serr_enable <= cmdo_reg[8];
 	int_disable <= cmdo_reg[10];
+	for (n4 = 0; n4 < NIRQ; n4 = n4 + 1)
+		if (irqf[n4] & ~irq_i2[n4])
+			irq_req[n4] <= 1'b0;
 
 	if (cs) begin
 		if (req_i.we)
-			case(req_i.padr[11:2])
+			casez(req_i.adr[11:2])
 			10'h02:
 				begin
 					if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
@@ -251,22 +252,24 @@ else begin
 					end
 				end
 			10'h04:
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar0 <= CFG_BAR0_MASK;
-				else begin
-					if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+				begin
+					if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
+						bar0 <= CFG_BAR0_MASK;
+					else begin
+						if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
+						if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
+						if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
+						if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+					end
 				end
-			10'h05:					
+			10'h05:
 				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
 					bar1 <= CFG_BAR1_MASK;
 				else begin
-					if (sel_i[0])	bar1[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar1[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar1[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar1[31:24] <= dat_i[31:24];
+					if (sel_i[0])	bar1[7:0] <= dat_i[39:32];
+					if (sel_i[1])	bar1[15:8] <= dat_i[47:40];
+					if (sel_i[2])	bar1[23:16] <= dat_i[55:48];
+					if (sel_i[3])	bar1[31:24] <= dat_i[63:56];
 				end
 			10'h06:
 				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
@@ -278,10 +281,19 @@ else begin
 					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
 				end
 			// IRQ bus controls
-			10'h10:	if (&sel_i[3:0]) irq_info[3'd0][31:0] <= dat_i;
-			10'h11:	if (&sel_i[3:0]) irq_info[3'd0][47:32] <= dat_i[15:0];
-			10'h12:	if (&sel_i[3:0]) irq_info[3'd1][31:0] <= dat_i;
-			10'h13:	if (&sel_i[3:0]) irq_info[3'd1][47:32] <= dat_i[15:0];
+			10'b01??00:	
+				begin
+					if (&sel_i[3:0]) irq_info[req_i.adr[5:4]][31: 0] <= dat_i[31: 0];
+				end
+			10'b01??01:	
+				begin
+					if (&sel_i[3:0]) irq_info[req_i.adr[5:4]][63:32] <= dat_i[31: 0];
+				end
+			10'b01??10:
+				begin
+					if (&sel_i[1:0]) irq_info[req_i.adr[5:4]][31: 0] <= dat_i[12: 0];
+					if (sel_i[3]) irq_req[req_i.adr[5:4]] <= 1'b1;
+				end
 			/*
 			10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
 			10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
@@ -292,82 +304,80 @@ else begin
 				;
 			endcase
 		else
-			case(adr_i[11:2])
-			10'h00:	dat_o <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
-			10'h01:	dat_o <= {stato_reg,cmdo_reg};
-			10'h02:	dat_o <= {
-				CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
-			10'h03:	dat_o <= {8'h00,
-				CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
-			10'h04:	dat_o <= bar0;
-			10'h05:	dat_o <= bar1;
-			10'h06:	dat_o <= bar2;
-			10'h07:	dat_o <= 32'hFFFFFFFF;
-			10'h08:	dat_o <= 32'hFFFFFFFF;
-			10'h09:	dat_o <= 32'hFFFFFFFF;
-			10'h0A:	dat_o <= 32'h0;
-			10'h0B:	dat_o <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
-			10'h0C:	dat_o <= CFG_ROM_ADDR;
-			10'h0D:	dat_o <= 32'h0;
-			10'h10:	dat_o <= irq_info[3'd0][31:0];
-			10'h11:	dat_o <= irq_info[3'd0][47:32];
-			10'h12:	dat_o <= irq_info[3'd1][31:0];
-			10'h13:	dat_o <= irq_info[3'd1][47:32];
-			/*
-			10'h14:	dat_o <= irq_info[3'd2][31:0];
-			10'h15:	dat_o <= irq_info[3'd2][63:32];
-			10'h16:	dat_o <= irq_info[3'd3][31:0];
-			10'h17:	dat_o <= irq_info[3'd3][63:32];
-			*/
+			casez(req_i.adr[11:2])
+			10'h00:	dat_o[31: 0] <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
+			10'h01:	dat_o[31: 0] <= {stato_reg,cmdo_reg};
+			10'h02:	dat_o[31: 0] <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
+			10'h03:	dat_o[31: 0] <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
+			10'h04:	dat_o[31: 0] <= bar0;
+			10'h05:	dat_o[31: 0] <= bar1;
+			10'h06:	dat_o[31: 0] <= bar2;
+			10'h07:	dat_o[31: 0] <= 32'hFFFFFFFF;
+			10'h08: dat_o[31: 0] <= 32'hFFFFFFFF;
+			10'h09:	dat_o[31: 0] <= 32'hFFFFFFFF;
+			10'h0A:	dat_o[31: 0] <= 32'h0;
+			10'h0B:	dat_o[31: 0] <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
+			10'h0C:	dat_o[31: 0] <= CFG_ROM_ADDR;
+			10'h0D:	dat_o[31: 0] <= 32'h0;
+			10'b01??00:	dat_o[31: 0] <= irq_info[req_i.adr[5:3]].dat;
+			10'b01??01:	dat_o[31: 0] <= irq_info[req_i.adr[5:3]].adr;
+			10'b01??10: dat_o[31: 0] <= {19'd0,irq_info[req_i.adr[5:3]].tid};
+			10'b01??11:	dat_o[31: 0] <= 32'd0;
 			default:	dat_o <= douta;
 			endcase
 	end
 end
 
+// Trigger IRQ message if IRQ signal set.
+
+reg [3:0] irq_wr;
 always_ff @(posedge clk_i)
 if (rst_i) begin
 	irq_sleep <= FALSE;
-	irqf <= 8'h00;
-	irq_resp.rty <= FALSE;
-	irq_resp.err <= fta_bus_pkg::OKAY;
-	irq_resp.adr <= 32'hFFFFFFFF;
+	irqf <= 4'h0;
+	irq_resp1[31:0] <= 32'h0;
+	irq_resp1[63:32] <= 32'hFFFFFFFF;
+	irq_resp1[76:64] <= 13'h0;
+	irq_i2 <= 4'h0;
 end
 else begin
-	irq_resp1.ack <= FALSE;
-	for (n2 = 0; n2 < NIRQ; n2 = n2 + 1)
-		if (irq_i[n2])
+	irq_wr <= 4'h0;
+	for (n2 = 0; n2 < NIRQ; n2 = n2 + 1) begin
+		irq_i2[n2] <= irq_i[n2];
+		if (irq_i[n2]|irq_req[n2])
 			irqf[n2] <= irq_timer[n2]==6'h3F;
+	end
 	if (irqf[0]) begin
 		irqf[0] <= FALSE;
-		irq_resp1.ack <= TRUE;
-		irq_resp1.dat <= irq_info[3'd0][31:0];
-		irq_resp1.tid <= irq_info[3'd0].tid;
-		irq_resp1.pri <= irq_info[3'd0].pri;
+		irq_wr[0] <= TRUE;
+		irq_resp1[31:0] <= irq_info[3'd0].dat;
+		irq_resp1[63:32] <= irq_info[3'd0].adr;
+		irq_resp1[76:64] <= irq_info[3'd0].tid;
 	end
 	else if (irqf[1]) begin
 		irqf[1] <= FALSE;
-		irq_resp1.ack <= TRUE;
-		irq_resp1.dat <= irq_info[3'd1][31:0];
-		irq_resp1.tid <= irq_info[3'd1].tid;
-		irq_resp1.pri <= irq_info[3'd1].pri;
+		irq_wr[1] <= TRUE;
+		irq_resp1[31:0] <= irq_info[3'd1].dat;
+		irq_resp1[63:32] <= irq_info[3'd1].adr;
+		irq_resp1[76:64] <= irq_info[3'd1].tid;
 	end
-	/*
 	else if (irqf[2]) begin
 		irqf[2] <= FALSE;
-		irq_resp1.ack <= TRUE;
-		irq_resp1.dat <= irq_info[3'd2][31:0];
-		irq_resp1.tid <= irq_info[3'd2].tid;
-		irq_resp1.pri <= irq_info[3'd2].pri;
+		irq_wr[2] <= TRUE;
+		irq_resp1[31:0] <= irq_info[3'd2].dat;
+		irq_resp1[63:32] <= irq_info[3'd2].adr;
+		irq_resp1[76:64] <= irq_info[3'd2].tid;
 	end
 	else if (irqf[3]) begin
 		irqf[3] <= FALSE;
-		irq_resp1.ack <= TRUE;
-		irq_resp1.dat <= irq_info[3'd3][31:0];
-		irq_resp1.tid <= irq_info[3'd3].tid;
-		irq_resp1.pri <= irq_info[3'd3].pri;
+		irq_wr[3] <= TRUE;
+		irq_resp1[31:0] <= irq_info[3'd3].dat;
+		irq_resp1[63:32] <= irq_info[3'd3].adr;
+		irq_resp1[76:64] <= irq_info[3'd3].tid;
 	end
-	*/
 end
+
+// This timer to prevent an IRQ from recurring in subsequent cycles.
 
 always_ff @(posedge clk_i)
 if (rst_i) begin
@@ -383,25 +393,27 @@ else begin
 	end
 end
 
+// When to update the fifo with the IRQ message.
 always_ff @(posedge clk_i)
 if (rst|wr_rst_busy|rd_rst_busy)
 	wr_en1 <= 1'b0;
 else
-	wr_en1 <= irq_resp1.ack;
+	wr_en1 <= |irq_wr;
 always_comb wr_en = wr_en1 & ~(rst|wr_rst_busy|rd_rst_busy);
 
-always_comb rd_en = irq_resp.ack & data_valid & ~(rst|wr_rst_busy|rd_rst_busy|cs_config_i);
+// Always read the IRQ message fifo.
+always_comb rd_en = ~(rst|rd_rst_busy|cs_config_i|resp_busy_i);
 
 //always_comb
 //	irq_o = {irq_device,2'd0,irq_core,1'b0,irq_channel,irq_priority,cause_code};
 //	irq_o = {31'd0,irq_i & ~int_disable} << irq_line;
 
 always_comb
-	cs_bar0_o = req_i.cyc && ((req_i.padr ^ bar0) & CFG_BAR0_MASK) == 32'd0;
+	cs_bar0_o = req_i.cyc && ((req_i.adr ^ bar0) & CFG_BAR0_MASK) == 32'd0;
 always_comb
-	cs_bar1_o = req_i.cyc && ((req_i.padr ^ bar1) & CFG_BAR1_MASK) == 32'd0;
+	cs_bar1_o = req_i.cyc && ((req_i.adr ^ bar1) & CFG_BAR1_MASK) == 32'd0;
 always_comb
-	cs_bar2_o = req_i.cyc && ((req_i.padr ^ bar2) & CFG_BAR2_MASK) == 32'd0;
+	cs_bar2_o = req_i.cyc && ((req_i.adr ^ bar2) & CFG_BAR2_MASK) == 32'd0;
 
 
 generate begin : gIRQFifo
@@ -424,12 +436,12 @@ if (NIRQ > 0)
       .PROG_EMPTY_THRESH(10),    // DECIMAL
       .PROG_FULL_THRESH(10),     // DECIMAL
       .RD_DATA_COUNT_WIDTH(5),   // DECIMAL
-      .READ_DATA_WIDTH($bits(fta_cmd_response32_t)),      // DECIMAL
+      .READ_DATA_WIDTH($bits(fta_imessage2_t)),      // DECIMAL
       .READ_MODE("fwft"),         // String
       .SIM_ASSERT_CHK(0),        // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
       .USE_ADV_FEATURES("1707"), // String
       .WAKEUP_TIME(0),           // DECIMAL
-      .WRITE_DATA_WIDTH($bits(fta_cmd_response32_t)),     // DECIMAL
+      .WRITE_DATA_WIDTH($bits(fta_imessage2_t)),     // DECIMAL
       .WR_DATA_COUNT_WIDTH(5)    // DECIMAL
    )
    xpm_fifo_sync_inst (
@@ -445,10 +457,10 @@ if (NIRQ > 0)
       .dbiterr(),             // 1-bit output: Double Bit Error: Indicates that the ECC decoder detected
                                      // a double-bit error and data in the FIFO core is corrupted.
 
-      .dout(irq_resp),              // READ_DATA_WIDTH-bit output: Read Data: The output data bus is driven
+      .dout(irq_resp2),             // READ_DATA_WIDTH-bit output: Read Data: The output data bus is driven
                                      // when reading the FIFO.
 
-      .empty(), 		                // 1-bit output: Empty Flag: When asserted, this signal indicates that the
+      .empty(empty),                // 1-bit output: Empty Flag: When asserted, this signal indicates that the
                                      // FIFO is empty. Read requests are ignored when the FIFO is empty,
                                      // initiating a read while empty is not destructive to the FIFO.
 
@@ -524,7 +536,16 @@ if (NIRQ > 0)
    );
 end
 endgenerate
-				
+		
+always_comb
+begin
+	irq_resp.pri = 4'd5;
+	irq_resp.err = fta_bus_pkg::IRQ;
+	irq_resp.tid = irq_resp2[76:64];
+	irq_resp.adr = irq_resp2[63:32];
+	irq_resp.dat = irq_resp2[31:0];
+	irq_resp.ack = !empty;
+end	
 
 generate begin : gROM			
 // XPM_MEMORY instantiation template for Single Port RAM configurations
@@ -535,7 +556,7 @@ generate begin : gROM
    // Xilinx Parameterized Macro, version 2022.2
 if (ROM)
    xpm_memory_spram #(
-      .ADDR_WIDTH_A(10),             // DECIMAL
+      .ADDR_WIDTH_A(9),             // DECIMAL
       .AUTO_SLEEP_TIME(0),           // DECIMAL
       .BYTE_WRITE_WIDTH_A(8),       	// DECIMAL
       .CASCADE_HEIGHT(0),            // DECIMAL
@@ -544,9 +565,9 @@ if (ROM)
       .MEMORY_INIT_PARAM("0"),       // String
       .MEMORY_OPTIMIZATION("true"),  // String
       .MEMORY_PRIMITIVE("auto"),     // String
-      .MEMORY_SIZE(8*4096),          // DECIMAL
+      .MEMORY_SIZE(64*512),          // DECIMAL
       .MESSAGE_CONTROL(0),           // DECIMAL
-      .READ_DATA_WIDTH_A(32),       // DECIMAL
+      .READ_DATA_WIDTH_A(64),       // DECIMAL
       .READ_LATENCY_A(2),            // DECIMAL
       .READ_RESET_VALUE_A("0"),      // String
       .RST_MODE_A("SYNC"),           // String
@@ -554,7 +575,7 @@ if (ROM)
       .USE_MEM_INIT(1),              // DECIMAL
       .USE_MEM_INIT_MMI(0),          // DECIMAL
       .WAKEUP_TIME("disable_sleep"), // String
-      .WRITE_DATA_WIDTH_A(32),       // DECIMAL
+      .WRITE_DATA_WIDTH_A(64),       // DECIMAL
       .WRITE_MODE_A("read_first"),   // String
       .WRITE_PROTECT(1)              // DECIMAL
    )
