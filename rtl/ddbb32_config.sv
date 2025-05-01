@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2024-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -41,7 +41,7 @@ import const_pkg::*;
 import fta_bus_pkg::*;
 
 module ddbb32_config(rst_i, clk_i, irq_i, cs_i, req_i, resp_o,
-	cs_bar0_o, cs_bar1_o, cs_bar2_o);
+	cs_bar0_o, cs_bar1_o, cs_bar2_o, irq_info);
 input rst_i;
 input clk_i;
 input [1:0] irq_i;
@@ -51,6 +51,7 @@ output fta_cmd_response32_t resp_o;
 output reg cs_bar0_o;
 output reg cs_bar1_o;
 output reg cs_bar2_o;
+output reg [47:0] irq_info [0:3];
 
 parameter CFG_CS = 4'hD;
 parameter CFG_BUS = 8'd0;
@@ -119,9 +120,9 @@ wire data_valid;
 // RAM / ROM signals
 wire rsta = rst_i;
 wire clka = clk_i;
-wire [3:0] wea = {4{req_i.we & cs_config_i}} && req_i.sel && req_i.padr[11:9]==3'd0;
+wire [3:0] wea = {4{req_i.we & cs_config_i}} && req_i.sel && req_i.adr[11:9]==3'd0;
 wire ena = 1'b1;
-wire [9:0] addra = req_i.padr[11:2];
+wire [9:0] addra = req_i.adr[11:2];
 wire [31:0] dina = req_i.dat;
 wire [31:0] douta;
 
@@ -165,20 +166,21 @@ always_comb resp_o.rty = 1'd0;
 always_comb resp_o.pri = 4'd7;
 
 typedef struct packed {
-	logic [12:0] resv;
-	logic [2:0] pri;
-	// target
-	logic [2:0] resvt;
-	fta_tranid_t tid;
+	logic [5:0] icno;
+	logic resv2;
+	logic [5:0] pri;
+	logic [2:0] swstk;
 	// source
-	logic [7:0] resvs;
-	logic [7:0] cause;
-	logic [7:0] bus;
-	logic [4:0] device;
-	logic [2:0] func;
+	logic [15:0] dat;
+	logic [1:0] om;
+	logic [1:0] resv1;
+	logic [11:0] vecno;
 } irq_info_t;
 
-irq_info_t [7:0] irq_info;
+irq_info_t [3:0] irq_infos;
+
+always_comb
+	irq_info = irq_infos;
 
 always_comb
 begin
@@ -277,9 +279,9 @@ else begin
 				end
 			// IRQ bus controls
 			10'h10:	if (&sel_i[3:0]) irq_info[3'd0][31:0] <= dat_i;
-			10'h11:	if (&sel_i[3:0]) irq_info[3'd0][63:32] <= dat_i;
+			10'h11:	if (&sel_i[3:0]) irq_info[3'd0][47:32] <= dat_i[15:0];
 			10'h12:	if (&sel_i[3:0]) irq_info[3'd1][31:0] <= dat_i;
-			10'h13:	if (&sel_i[3:0]) irq_info[3'd1][63:32] <= dat_i;
+			10'h13:	if (&sel_i[3:0]) irq_info[3'd1][47:32] <= dat_i[15:0];
 			/*
 			10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
 			10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
@@ -308,9 +310,9 @@ else begin
 			10'h0C:	dat_o <= CFG_ROM_ADDR;
 			10'h0D:	dat_o <= 32'h0;
 			10'h10:	dat_o <= irq_info[3'd0][31:0];
-			10'h11:	dat_o <= irq_info[3'd0][63:32];
+			10'h11:	dat_o <= irq_info[3'd0][47:32];
 			10'h12:	dat_o <= irq_info[3'd1][31:0];
-			10'h13:	dat_o <= irq_info[3'd1][63:32];
+			10'h13:	dat_o <= irq_info[3'd1][47:32];
 			/*
 			10'h14:	dat_o <= irq_info[3'd2][31:0];
 			10'h15:	dat_o <= irq_info[3'd2][63:32];
