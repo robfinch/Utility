@@ -33,6 +33,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+// Asynchronous to synchronous bus bridges
 // ============================================================================
 
 import fta_bus_pkg::*;
@@ -54,15 +55,15 @@ if (rst) begin
 	aer_i <= 'd0;
 end
 else begin
-	aer_i <= resp_i.ack|resp_i.err|resp_i.rty;
+	aer_i <= resp_i.ack|resp_i.rty;
 	// If a cycle is pulsed, latch the request.
 	if (req_i.cyc)
 		req_o <= req_i;
 	// On an ack, clear the request
-	else if (resp_i.ack|resp_i.err|resp_i.rty)
+	else if (resp_i.ack|resp_i.rty)
 		req_o <= 'd0;
 	// On an ack, pulse the ack response
-	if ((resp_i.ack|resp_i.err|resp_i.rty) & ~aer_i)
+	if ((resp_i.ack|resp_i.rty) & ~aer_i)
 		resp_o <= resp_i;
 	else
 		resp_o <= 'd0;
@@ -79,26 +80,29 @@ output fta_cmd_request256_t req_o;
 input fta_cmd_response256_t resp_i;
 
 reg aer_i;
+fta_cmd_request256_t req1;
 
 always_ff @(posedge clk, posedge rst)
 if (rst) begin
-	req_o <= 'd0;
-	resp_o <= 'd0;
-	aer_i <= 'd0;
+	req1 <= {$bits(fta_cmd_request256_t){1'd0}};
+	resp_o <= {$bits(fta_cmd_response256_t){1'd0}};
+	aer_i <= 1'd0;
 end
 else begin
-	aer_i <= resp_i.ack|resp_i.err|resp_i.rty;
+	aer_i <= resp_i.ack;
 	// If a cycle is pulsed, latch the request.
 	if (req_i.cyc)
-		req_o <= req_i;
+		req1 <= req_i;
 	// On an ack, clear the request
-	else if (resp_i.ack|resp_i.err|resp_i.rty)
-		req_o <= 'd0;
+	else if (resp_i.ack)
+		req1 <= {$bits(fta_cmd_request256_t){1'd0}};
 	// On an ack, pulse the ack response
-	if ((resp_i.ack|resp_i.err|resp_i.rty) & ~aer_i)
+	if (req1.cyc & resp_i.ack & ~aer_i)
 		resp_o <= resp_i;
 	else
-		resp_o <= 'd0;
+		resp_o <= {$bits(fta_cmd_response256_t){1'd0}};
 end
+
+assign req_o = req1;//resp_i.ack ? {$bits(fta_cmd_request256_t){1'd0}} : req1;
 
 endmodule

@@ -134,12 +134,9 @@
 `define KBD_TX	1	// include transmitter
 
 module PS2kbd_fta32(
-	// WISHBONE/SoC bus interface 
-	input rst_i,
-	input clk_i,	// system clock
 	input cs_config_i,
-	input fta_cmd_request32_t req,
-	output fta_cmd_response32_t resp,
+	// SoC bus interface 
+	fta_bus_interface.slave s_bus_i,
 	//-------------
 	input kclk_i,	// keyboard clock from keyboard
 	output kclk_en,	// 1 = drive clock low
@@ -186,6 +183,14 @@ typedef enum logic [1:0] {
 	S_KBDRX_CHK_CLK_LOW	= 2'd1,
 	S_KBDRX_CAPTURE_BIT = 2'd2
 } kbd_state_t;
+
+fta_cmd_request32_t req;
+fta_cmd_response32_t resp;
+
+wire rst_i = s_bus_i.rst;
+wire clk_i = s_bus_i.clk;
+assign req = s_bus_i.req;
+assign s_bus_i.resp = resp;
 
 reg cs_config;
 reg [31:0] dat_o;
@@ -328,7 +333,7 @@ if (cs_io)
 else
 	dat_o <= 32'd0;
 
-change_det ucd1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(irq), .cd(irq_cd));
+change_det #(1) ucd1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(irq), .cd(irq_cd));
 
 always_comb
 	if ((irq_cd|irq_cdr) & !(cs_io|cs_config))

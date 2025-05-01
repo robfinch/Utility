@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@opencores.org
 //       ||
@@ -32,7 +32,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //                                                            
-// IOBridge128to32fta.v
+// IOBridge256to32fta.v
 //
 // Adds FF's into the io path. This makes it easier for the place and
 // route to take place. 
@@ -153,7 +153,7 @@ always_comb
 always_ff @(posedge clk_i)
 if (rst_i) begin
 	m_req <= 'd0;
-	m_req.padr <= 32'hFFFFFFFF;
+	m_req.adr <= 32'hFFFFFFFF;
 	s1_resp <= {$bits(fta_cmd_response256_t){1'b0}};
 end
 else begin
@@ -163,10 +163,9 @@ else begin
     m_req.cti <= s1_req.cti;
     m_req.cmd <= s1_req.cmd;
     m_req.cyc <= 1'b1;
-    m_req.stb <= s1_req.stb;
     m_req.tid <= s1_req.tid;
-    m_req.padr <= s1_req.padr;
-    m_req.padr[4:0] <= s1_a40;
+    m_req.adr <= s1_req.adr;
+    m_req.adr[4:0] <= s1_a40;
 //    m_req.sel <= s1_req.sel[15:8]|s1_req.sel[7:0];
     m_req.sel <= 
     	s1_req.sel[31:28]|s1_req.sel[27:24]|s1_req.sel[23:20]|s1_req.sel[19:16]|
@@ -174,17 +173,16 @@ else begin
     m_req.we <= s1_req.we;
   end
   else begin
-  	m_req.cyc <= 'd0;
-  	m_req.stb <= 'd0;
-  	m_req.we <= 'd0;
-  	m_req.sel <= 'd0;
-  	m_req.padr <= 32'hFFFFFFFF;
+  	m_req.cyc <= 1'd0;
+  	m_req.we <= 1'd0;
+  	m_req.sel <= 4'd0;
+  	m_req.adr <= 32'hFFFFFFFF;
 	end
   if (s1_req.cyc)
 //		m_req.dat <= s1_req.data1 >> {|s1_req.sel[15:8],6'd0};
 		m_req.dat <= s1_req.data1 >> {s1_a40[4:2],5'd0};
 	else
-		m_req.dat <= 'd0;
+		m_req.dat <= 32'd0;
 
 	// Handle responses	
 	s1_resp.ack <= respo.ack;
@@ -192,7 +190,7 @@ else begin
 	s1_resp.rty <= respo.rty;
 	s1_resp.next <= respo.next;
 	s1_resp.stall <= respo.stall;
-	s1_resp.dat <= {4{respo.dat}};
+	s1_resp.dat <= {8{respo.dat}};
 	s1_resp.tid <= respo.tid;
 	s1_resp.adr <= respo.adr;
 	s1_resp.pri <= respo.pri;

@@ -1,6 +1,7 @@
+`timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2011-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2011-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -41,40 +42,6 @@
 //  08           m_z seed setting bits [31:0]
 //  0C           m_w seed setting bits [31:0]
 //
-//  +- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|WISHBONE Datasheet
-//	|WISHBONE SoC Architecture Specification, Revision B.3
-//	|
-//	|Description:						Specifications:
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|General Description:				random number generator
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|Supported Cycles:					SLAVE,READ/WRITE
-//	|									SLAVE,BLOCK READ/WRITE
-//	|									SLAVE,RMW
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|Data port, size:					32 bit
-//	|Data port, granularity:			32 bit
-//	|Data port, maximum operand size:	32 bit
-//	|Data transfer ordering:			Undefined
-//	|Data transfer sequencing:			Undefined
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|Clock frequency constraints:		none
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|Supported signal list and			Signal Name		WISHBONE equiv.
-//	|cross reference to equivalent		ack_o			ACK_O
-//	|WISHBONE signals					adr_i[31:0]		ADR_I()
-//	|									clk_i			CLK_I
-//	|                                   rst_i           RST_I()
-//	|									dat_i(31:0)		DAT_I()
-//	|									dat_o(31:0)		DAT_O()
-//	|									cyc_i			CYC_I
-//	|									stb_i			STB_I
-//	|									we_i			WE_I
-//	|
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|Special requirements:
-//	+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //
 // 257 LUTs / 309 FFs / 2 BRAMs / 2 DSP
 // ============================================================================
@@ -96,12 +63,9 @@ import fta_bus_pkg::*;
 `define TRUE	1'b1
 `define FALSE	1'b0
 
-module random_fta32(rst_i, clk_i, cs_config_i, req, resp);
-input rst_i;
-input clk_i;
+module random_fta32(cs_config_i, s_bus_i);
 input cs_config_i;
-input fta_cmd_request32_t req;
-output fta_cmd_response32_t resp;
+fta_bus_interface.slave s_bus_i;
 parameter pAckStyle = 1'b0;
 
 parameter IO_ADDR = 32'hFEE10001;
@@ -129,6 +93,14 @@ localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 
 parameter MSIX = 1'b0;
 
+fta_cmd_request32_t req;
+fta_cmd_response32_t resp;
+
+wire rst_i = s_bus_i.rst;
+wire clk_i = s_bus_i.clk;
+assign req = s_bus_i.req;
+assign s_bus_i.resp = resp;
+
 reg ack;
 reg cs;
 reg we;
@@ -153,7 +125,7 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	sel <= req.sel;
 always_ff @(posedge clk_i)
-	adr <= req.padr;
+	adr <= req.adr;
 always_ff @(posedge clk_i)
 	dat <= req.dat;
 always_ff @(posedge clk_i)
@@ -163,7 +135,7 @@ always_ff @(posedge clk_i)
 	resp1.ack <= cs_rand & (~reqd.we || reqd.cti==fta_bus_pkg::ERC);
 //vtdl #(.WID(6), .DEP(16)) urdyd3 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.cid), .q(resp.cid));
 vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) urdyd4 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.tid), .q(resp1.tid));
-vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.padr), .q(resp1.adr));
+vtdl #(.WID($bits(fta_address_t)), .DEP(16)) urdyd5 (.clk(clk_i), .ce(1'b1), .a(4'd1), .d(req.adr), .q(resp1.adr));
 always_ff @(posedge clk_i)
 if (rst_i)
 	resp <= {$bits(fta_cmd_response32_t){1'b0}};

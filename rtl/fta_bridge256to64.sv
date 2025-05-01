@@ -20,14 +20,12 @@ begin
 	req64_o.seg = req256_i.seg;
 	req64_o.sz = req256_i.sz;
 	req64_o.cyc = req256_i.cyc;
-	req64_o.stb = req256_i.stb;
 	req64_o.we = req256_i.we;
 	req64_o.sel = 
 		req256_i.sel[31:24]|req256_i.sel[23:16]|
 		req256_i.sel[15:8]|req256_i.sel[7:0];
-	req64_o.asid = req256_i.asid;
-	req64_o.vadr = req256_i.vadr;
-	req64_o.padr = req256_i.padr;
+	req64_o.pv = req256_i.pv;
+	req64_o.adr = req256_i.adr;
 	case(req256_i.sel)
 	32'h00000001:	req64_o.dat = {8{req256_i.data1[7:0]}};
 	32'h00000002:	req64_o.dat = {8{req256_i.data1[15:8]}};

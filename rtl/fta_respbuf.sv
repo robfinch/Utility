@@ -1,7 +1,7 @@
 `timescale 1ns / 10ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2023-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2023-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -1553,8 +1553,8 @@ wire [CHANNELS-1:0] data_valid;
 wire [CHANNELS-1:0] empty;
 wire [CHANNELS-1:0] rd_rst_busy;
 wire [CHANNELS-1:0] wr_rst_busy;
-fta_cmd_response256_t [CHANNELS-1:0] dout;
-fta_cmd_response256_t [CHANNELS-1:0] din;
+fta_cmd_response64_t [CHANNELS-1:0] dout;
+fta_cmd_response64_t [CHANNELS-1:0] din;
 reg [CHANNELS-1:0] rd_en;
 reg [CHANNELS-1:0] wr_en;
 wire wr_clk = clk;
@@ -1563,7 +1563,7 @@ wire [CHANNELS-1:0] rr_sel;
 wire [$clog2(CHANNELS)-1:0] rr_sel_enc;
 reg [$clog2(CHANNELS)-1:0] rr_sel_enc2;
 reg [3:0] rst_cnt [0:CHANNELS-1];
-fta_cmd_response256_t resp1;
+fta_cmd_response64_t resp1;
 wire cd_resp;
 
 // Reset counter used to prime the fifo reads.
@@ -2345,8 +2345,8 @@ wire [CHANNELS-1:0] data_valid;
 wire [CHANNELS-1:0] empty;
 wire [CHANNELS-1:0] rd_rst_busy;
 wire [CHANNELS-1:0] wr_rst_busy;
-fta_cmd_response256_t [CHANNELS-1:0] dout;
-fta_cmd_response256_t [CHANNELS-1:0] din;
+fta_cmd_response32_t [CHANNELS-1:0] dout;
+fta_cmd_response32_t [CHANNELS-1:0] din;
 reg [CHANNELS-1:0] rd_en;
 reg [CHANNELS-1:0] wr_en;
 wire wr_clk = clk;
@@ -2355,7 +2355,7 @@ wire [CHANNELS-1:0] rr_sel;
 wire [$clog2(CHANNELS)-1:0] rr_sel_enc;
 reg [$clog2(CHANNELS)-1:0] rr_sel_enc2;
 reg [3:0] rst_cnt [0:CHANNELS-1];
-fta_cmd_response256_t resp1;
+fta_cmd_response32_t resp1;
 wire cd_resp;
 
 // Reset counter used to prime the fifo reads.

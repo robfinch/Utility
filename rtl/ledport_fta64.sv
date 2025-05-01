@@ -1,6 +1,6 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2024-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -43,12 +43,12 @@ input fta_cmd_request64_t req;
 output fta_cmd_response64_t resp;
 output reg [7:0] led;
 
-reg [25:0] count;
+reg [28:0] count;
 reg ff1;
 
 always_ff @(posedge clk)
 if (rst)
-	count <= 26'd0;
+	count <= 29'd0;
 else begin
 	count <= count + 2'd1;
 end
@@ -66,7 +66,7 @@ if (rst)
 	led <= 'd0;
 else begin
 	if (ff1==1'b0)
-		led <= {8{count[25]}};
+		led <= {8{count[28]}};
 	if (cs & req.we)
 		led <= req.dat[7:0];
 end
@@ -81,7 +81,7 @@ else begin
 	resp.err <= fta_bus_pkg::OKAY;
 	resp.rty <= 1'd0;
 	resp.pri <= 4'd7;
-	resp.adr <= req.padr;
+	resp.adr <= req.adr;
 	resp.dat <= 64'd0;
 end
 

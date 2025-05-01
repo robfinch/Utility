@@ -20,14 +20,12 @@ begin
 	req32_o.seg = req256_i.seg;
 	req32_o.sz = req256_i.sz;
 	req32_o.cyc = req256_i.cyc;
-	req32_o.stb = req256_i.stb;
 	req32_o.we = req256_i.we;
 	req32_o.sel = 
 		req256_i.sel[31:28]|req256_i.sel[27:24]|req256_i.sel[23:20]|req256_i.sel[19:16]|
 		req256_i.sel[15:12]|req256_i.sel[11:8]|req256_i.sel[7:4]|req256_i.sel[3:0];
-	req32_o.asid = req256_i.asid;
-	req32_o.vadr = req256_i.vadr;
-	req32_o.padr = req256_i.padr;
+	req32_o.pv = req256_i.pv;
+	req32_o.adr = req256_i.adr;
 	case(req256_i.sel)
 	32'h00000001:	req32_o.dat = {8{req256_i.data1[7:0]}};
 	32'h00000002:	req32_o.dat = {8{req256_i.data1[15:8]}};
