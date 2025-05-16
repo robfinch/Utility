@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2022  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -39,7 +39,7 @@
 // ============================================================================
 //
 module BusError(rst_i, clk_i, cyc_i, ack_i, stb_i, adr_i, err_o);
-parameter pTO=28'd250;
+parameter pTO=16'd250;
 input rst_i;
 input clk_i;
 input cyc_i;
@@ -49,25 +49,25 @@ input [31:0] adr_i;
 output err_o;
 reg err_o;
 
-reg [27:0] tocnt;
+reg [15:0] tocnt;
 
 always_ff @(posedge clk_i)
 if (rst_i) begin
 	err_o <= 1'b0;
-	tocnt <= 28'd1;
+	tocnt <= 16'd1;
 end
 else begin
 	err_o <= 1'b0;
 	// If there is no bus cycle active, or if the bus cycle
 	// has been acknowledged, reset the timeout count.
 	if (ack_i || !cyc_i) begin
-		tocnt <= 28'd1;
+		tocnt <= 16'd1;
 		err_o <= 1'b0;
 	end
 	else if (tocnt < pTO)
 		tocnt <= tocnt + 28'd1;
 	else if (cyc_i && stb_i && (adr_i[31:4]==28'hFFDCFFE)) begin	// conflist with configrec ?
-		tocnt <= 28'd1;
+		tocnt <= 16'd1;
 		err_o <= 1'b0;
 	end
 	else
