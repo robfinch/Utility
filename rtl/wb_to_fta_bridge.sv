@@ -56,6 +56,8 @@ input [WID-1:0] dat_i;
 output reg [WID-1:0] dat_o;
 fta_bus_interface.master fta_o;
 
+reg [5:0] blen;
+reg [31:0] ladr;
 reg cycd;
 reg [5:0] rty_cnt;
 
@@ -70,7 +72,7 @@ always_ff @(posedge clk_i)
 if (rst_i)
 	rty_cnt <= 6'd0;
 else begin
-	if (fta_o.resp.ack)
+	if (fta_o.resp.ack || !(cyc_i && cs_i))
 		rty_cnt <= 5'd0;
 	if (fta_o.resp.rty) begin
 		rty_cnt <= rty_cnt + 2'd1;
@@ -85,20 +87,40 @@ else begin
 		err_o <= fta_bus_pkg::OKAY;
 	if (rty_cnt==6'd10)
 		err_o <= fta_bus_pkg::ERR;
+	if (!cyc_i)
+		err_o <= fta_bus_pkg::OKAY;
 end
 
 always_ff @(posedge clk_i)
 begin
 	fta_o.req <= 1000'd0;
 	if (cyc_i & ~cycd & cs_i & ~fta_o.resp.stall) begin
-		fta_o.req.cyc <= HIGH;
-		fta_o.req.we <= we_i;
+		case(adr_i)
+		32'hBFFFFFF4:	if (we_i) blen <= dat_i[5:0];
+		32'hBFFFFFF8:	if (we_i) ladr <= dat_i[31:0];
+		32'hBFFFFFFC:
+			begin
+				fta_o.req.blen <= blen;
+				fta_o.req.sel <= {WID/8{1'b1}};
+				fta_o.req.adr <= ladr;
+			end
+		default:
+			begin
+				fta_o.req.blen <= 6'd0;
+				fta_o.req.cyc <= HIGH;
+				fta_o.req.sel <= sel_i;
+				fta_o.req.adr <= adr_i;
+			end
+		endcase
+		fta_o.req.bte <= fta_bus_pkg::LINEAR;
+		fta_o.req.cti <= fta_bus_pkg::CLASSIC;
 		fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
-		fta_o.req.sel <= sel_i;
-		fta_o.req.adr <= adr_i;
+		fta_o.req.we <= we_i;
 		fta_o.req.data1 <= dat_i;
+		if (we_i)
+			ack_o <= HIGH;
 	end
-	if (fta_o.resp.ack || (cyc_i && cs_i && we_i) || rty_cnt==6'd10) begin
+	if (fta_o.resp.ack || rty_cnt==6'd10) begin
 		ack_o <= HIGH;
 		dat_o <= fta_o.resp.dat;
 	end
