@@ -26,17 +26,18 @@
 // ============================================================================
 //
 module ready_gen(clk_i, ce_i, i, o, id_i, id_o);
+parameter STAGES = 3;
+parameter WID=6;
 input clk_i;
 input ce_i;
 input i;
 output reg o = 1'd0;
-input [3:0] id_i;
-output reg [3:0] id_o;
-parameter STAGES = 3;
+input [WID-1:0] id_i;
+output reg [WID-1:0] id_o;
 
 integer n;
 reg [STAGES-1:0] rdy;
-reg [3:0] id [0:STAGES-1];
+reg [WID-1:0] id [0:STAGES-1];
 always @(posedge clk_i)
 if (ce_i) begin
 	rdy[0] <= i;

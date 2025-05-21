@@ -65,3 +65,35 @@ always @(posedge clk)
 assign q = m[a];
 
 endmodule
+
+module vtdlx1(clk, ce, a, d, q);
+parameter WID = 1;
+parameter DEP = 16;
+localparam AMSB = $clog2(DEP)-1;
+input clk;
+input ce;
+input [AMSB:0] a;
+input [WID-1:0] d;
+output [WID-1:0] q;
+
+reg [WID-1:0] m [DEP-1:0];
+integer n;
+
+`ifdef SIM
+initial begin
+	for (n = 0; n < DEP; n = n + 1)
+		m[n] = {WID{1'b0}};
+end
+`endif
+
+always @(posedge clk)
+	if (ce) begin
+		for (n = 1; n < DEP; n = n + 1)
+			m[n] <= m[n-1];
+		m[0] <= d;
+	end
+
+assign q = m[a];
+
+endmodule
+

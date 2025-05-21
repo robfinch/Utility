@@ -131,6 +131,8 @@ wire [63:0] douta;
 
 reg [63:0] dat_o;
 
+wire cs = cs_config_i;
+
 // FTA bus interface
 wire rd_ack, wr_ack;
 wire [31:0] adr3;
@@ -211,8 +213,6 @@ initial begin
 	for (n1 = 0; n1 < 64; n1 = n1 + 1)
 		cfg_dat[n1] = 'd0;
 end
-
-wire cs = cs_config_i;
 
 always_ff @(posedge clk_i)
 if (rst_i) begin

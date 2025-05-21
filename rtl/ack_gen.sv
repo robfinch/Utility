@@ -1,6 +1,6 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2018-2022  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2018-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -25,37 +25,38 @@
 // ============================================================================
 //
 module ack_gen(rst_i, clk_i, ce_i, i, rid_i, we_i, wid_i, o, rid_o, wid_o);
+parameter WID=6;
 input rst_i;
 input clk_i;
 input ce_i;
 input i;
-input [3:0] rid_i;
+input [WID-1:0] rid_i;
 input we_i;
-input [3:0] wid_i;
+input [WID-1:0] wid_i;
 output reg o;
-output reg [3:0] rid_o;
-output reg [3:0] wid_o;
+output reg [WID-1:0] rid_o;
+output reg [WID-1:0] wid_o;
 parameter READ_STAGES = 3;
 parameter WRITE_STAGES = 0;
 parameter ACK_LEVEL = 1'b0;
 parameter REGISTER_OUTPUT = 1'b0;
 
 wire ro, wo;
-wire [3:0] rid, wid;
+wire [WID-1:0] rid, wid;
 generate begin : gRdy
 if (READ_STAGES==0) begin
 assign ro = 0;
 assign rid = rid_i;
 end
 else begin
-ready_gen #(READ_STAGES) urrdy (clk_i, ce_i, i, ro, rid_i, rid);
+ready_gen #(.STAGES(READ_STAGES),.WID(WID)) urrdy (clk_i, ce_i, i, ro, rid_i, rid);
 end
 if (WRITE_STAGES==0) begin
 assign wo = we_i;
 assign wid = wid_i;
 end
 else begin
-ready_gen #(WRITE_STAGES) uwrdy (clk_i, ce_i, we_i, wo, wid_i, wid);
+ready_gen #(.STAGES(WRITE_STAGES),.WID(WID)) uwrdy (clk_i, ce_i, we_i, wo, wid_i, wid);
 end
 if (REGISTER_OUTPUT) begin
 always @(posedge clk_i)
