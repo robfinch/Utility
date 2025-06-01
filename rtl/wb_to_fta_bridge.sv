@@ -65,10 +65,12 @@ reg cycd;
 reg [9:0] rty_cnt;
 reg cyc;
 wire pe_cyc;
+wire pe_cycx;
 
 always_comb
 	cyc = cyc_i & cs_i & ~fta_o.resp.stall;
 edge_det ued1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(cyc), .pe(pe_cyc), .ne(), .ee());
+pulse_extender(.clk_i(clk_i), .ce_i(1'b1), .cnt_i(4'd1), .i(pe_cyc), .o(pe_cycx), .no());
 
 always_ff @(posedge clk_i)
 begin
@@ -104,37 +106,51 @@ typedef enum logic [1:0]
 {
 	wait_state = 2'd0,
 	access_state,
-	access_ack_state
+	access_ack_state,
+	delay_state
 } bus_state_e;
 reg [3:0] bridge_state;
 
 always_ff @(posedge clk_i)
-begin
+if (rst_i) begin
 	fta_o.req <= 1000'd0;
-	if (!cyc) begin
-		ack_o <= LOW;
-		dat_o <= {WID{1'd0}};
-	end
+	ack_o <= LOW;
+end
+else begin
+	fta_o.req <= 1000'd0;
 	case(1'b1)
 	bridge_state[wait_state]:
 		begin
 			ack_o <= LOW;
+			dat_o <= {WID{1'd0}};
 			fta_o.req.tid <= {CORENO,3'd0,4'd1};
 			fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
 			fta_o.req.we <= we_i;
-			if (pe_cyc) begin
-				fta_o.req.cyc <= HIGH;
+			if (pe_cycx) begin
 				case(adr_i)
 				32'h7FFFFFF0,
-				32'hBFFFFFF0:	if (we_i) src_adr <= dat_i[31:0];
+				32'hBFFFFFF0:	
+					if (we_i) src_adr <= dat_i[31:0];
+					else begin
+						dat_o <= {8{src_adr}};
+					end
 				32'h7FFFFFF4,
-				32'hBFFFFFF4:	if (we_i) dst_adr <= dat_i[31:0];
+				32'hBFFFFFF4:
+					if (we_i) dst_adr <= dat_i[31:0];
+					else begin
+						dat_o <= {8{dst_adr}};
+					end
 				32'h7FFFFFF8,
-				32'hBFFFFFF8:	if (we_i) blen <= dat_i[7:0];
+				32'hBFFFFFF8:
+					if (we_i) blen <= dat_i[7:0];
+					else begin
+						dat_o <= {8{24'd0,blen}};
+					end
 				32'h7FFFFFFC,
 				32'hBFFFFFFC:
 					begin
 						fta_o.req.blen <= blen;
+						fta_o.req.cyc <= HIGH;
 						fta_o.req.sel <= {WID/8{1'b1}};
 						fta_o.req.adr <= we_i ? dst_adr : src_adr;
 						fta_o.req.data1 <= dat_i;//data_hold;
@@ -142,6 +158,7 @@ begin
 				default:
 					begin
 						fta_o.req.blen <= 8'd0;
+						fta_o.req.cyc <= HIGH;
 						fta_o.req.sel <= sel_i;
 						fta_o.req.pv <= 1'b0;
 						fta_o.req.adr <= adr_i;
@@ -153,6 +170,10 @@ begin
 		//		fta_o.req.cti <= fta_bus_pkg::CLASSIC;
 		 	end
 		end
+
+	bridge_state[delay_state]:
+		ack_o <= HIGH;
+		
 	bridge_state[access_state]:
 		if (we_i)
 			ack_o <= HIGH;
@@ -174,10 +195,29 @@ else begin
 	bridge_state <= 4'd0;
 	case(1'b1)
 	bridge_state[wait_state]:
-		if (pe_cyc)
-			bridge_state[access_state] <= 1'b1;
+		if (pe_cycx)
+			case(adr_i)
+			32'h7FFFFFF0,
+			32'hBFFFFFF0,
+			32'h7FFFFFF4,
+			32'hBFFFFFF4,
+			32'h7FFFFFF8,
+			32'hBFFFFFF8:
+				if (we_i)
+					bridge_state[delay_state] <= 1'b1;
+				else
+					bridge_state[delay_state] <= 1'b1;
+			32'h7FFFFFFC,
+			32'hBFFFFFFC:
+				bridge_state[access_state] <= 1'b1;
+			default:	bridge_state[access_state] <= 1'b1;
+			endcase
 		else
 			bridge_state[wait_state] <= 1'b1;
+
+	bridge_state[delay_state]:
+		bridge_state[wait_state] <= 1'b1;
+	
 	bridge_state[access_state]:
 		if (!cyc)
 			bridge_state[wait_state] <= 1'b1;

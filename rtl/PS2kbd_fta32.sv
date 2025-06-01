@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2005-2024  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2005-2025  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -133,6 +133,8 @@
 
 `define KBD_TX	1	// include transmitter
 
+import fta_bus_pkg::*;
+
 module PS2kbd_fta32(
 	input cs_config_i,
 	// SoC bus interface 
@@ -249,7 +251,7 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	sel <= req.sel;
 always_ff @(posedge clk_i)
-	adr <= req.padr;
+	adr <= req.adr;
 always_ff @(posedge clk_i)
 	dati <= req.dat;
 always_ff @(posedge clk_i)
@@ -265,9 +267,9 @@ always_comb
 	cs_io = cs_kbd;
 
 always_ff @(posedge clk_i)
-	resp.ack <= cfg_resp.ack ? 1'b1 : cs_io ? reqd.cyc & reqd.stb : irqa;
+	resp.ack <= cfg_resp.ack ? 1'b1 : cs_io ? reqd.cyc : irqa;
 always_ff @(posedge clk_i)
-	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
+	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.adr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
 always_ff @(posedge clk_i)
 	resp.tid <= cfg_resp.ack ? cfg_resp.tid : cs_io ? reqd.tid : 13'd0;//irqa ? {irq_o[21:16],irq_o[14:12],4'd0} : 13'd0;	// core,channel
 always_ff @(posedge clk_i)
@@ -275,7 +277,7 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	resp.pri <= cfg_resp.ack ? cfg_resp.pri : cs_io ? 4'd5 : 4'd5;//irqa ? irq_o[11:8] : 4'd5;		// priority
 always_ff @(posedge clk_i)
-	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.padr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
+	resp.adr <= cfg_resp.ack ? cfg_resp.adr : cs_io ? reqd.adr : irqa ? {CFG_BUS,CFG_DEVICE,CFG_FUNC} : 32'd0;
 always_ff @(posedge clk_i)
 	resp.dat <= cfg_resp.ack ? cfg_resp.dat : cs_io ? dat_o : 32'd0;//irqa ? {24'h00,irq_o[7:0]} : 32'd0;
 assign resp.next = 1'b0;
