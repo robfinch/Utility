@@ -109,6 +109,7 @@ module RoundRobinArbiter #(
   logic [NumRequests-1:0] prevGrant;
   logic [$clog2(NumRequests):0] unmaskedGrant_enc;
   logic [$clog2(NumRequests):0] maskedGrant_enc;
+  logic [$clog2(NumRequests):0] prevGrantEnc;
 
   assign maskedReq = req & mask;
 
@@ -128,15 +129,19 @@ module RoundRobinArbiter #(
     .grant_enc(maskedGrant_enc)
   );
 
-  assign grant = (maskedReq == '0) ? unmaskedGrant : maskedGrant;
-  assign grant_enc = (maskedReq == '0) ? unmaskedGrant_enc : maskedGrant_enc;
+	always_comb
+	begin
+		grant = (maskedReq == '0) ? unmaskedGrant : maskedGrant;
+		if (grant=='0 && hold)
+			grant = prevGrant;
+  	grant_enc = (maskedReq == '0) ? unmaskedGrant_enc : maskedGrant_enc;
+		if (grant=='0 && hold)
+			grant_enc = prevGrantEnc;
+	end
 
   always_comb begin
-    if (grant == '0) begin
+    if (grant == '0)
       maskNext = mask;
-      if (hold)
-     		grant = prevGrant;
-    end
     else begin
       maskNext = '1;
 
@@ -144,15 +149,18 @@ module RoundRobinArbiter #(
         maskNext[i] = 1'b0;
         if (grant[i]) break;
       end
-      if (hold & ~|grant)
-      	grant = prevGrant;
     end
   end
 
   always_ff @(posedge clk) begin
-    if (rst) mask <= '1;
+    if (rst) begin
+    	mask <= '1;
+    	prevGrant <= '0;
+    	prevGrantEnc <= '0;
+    end
     else if (ce) begin
     	prevGrant <= grant;
+    	prevGrantEnc <= grant_enc;
     	mask <= maskNext;
     end
   end
