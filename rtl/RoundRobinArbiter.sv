@@ -132,11 +132,11 @@ module RoundRobinArbiter #(
 	always_comb
 	begin
 		grant = (maskedReq == '0) ? unmaskedGrant : maskedGrant;
-		if (grant=='0 && hold)
-			grant = prevGrant;
   	grant_enc = (maskedReq == '0) ? unmaskedGrant_enc : maskedGrant_enc;
 		if (grant=='0 && hold)
 			grant_enc = prevGrantEnc;
+		if (grant=='0 && hold)
+			grant = prevGrant;
 	end
 
   always_comb begin
