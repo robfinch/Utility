@@ -127,8 +127,8 @@ wire empty;
 // RAM / ROM signals
 wire rsta = rst_i;
 wire clka = clk_i;
-wire [3:0] wea = {4{req_i.we & cs_config_i}} && req_i.sel && req_i.adr[13:9]==5'd0;
-wire ena = 1'b1;
+wire [3:0] wea = {4{req_i.we && req_i.adr[13:9]==5'd0}} && req_i.sel;
+wire ena = cs_config_i;
 wire [11:0] addra = req_i.adr[13:2];
 wire [31:0] dina = req_i.dat;
 wire [31:0] douta;
@@ -145,32 +145,56 @@ end
 endfunction
 
 // FTA bus interface
-wire rd_ack, wr_ack;
-wire [31:0] adr3;
-fta_asid_t asid3;
 fta_tranid_t tid3;
-wire [3:0] sel_i = req_i.sel;
-wire [31:0] dat_i = req_i.adr[13:0] < 14'h0200 ? (req_i.adr[8] ? fnRbo32(req_i.dat) : req_i.dat) : req_i.dat;
-wire [31:0] adr_i = req_i.adr;
+reg we_i;
+reg [3:0] sel_i;
+reg [31:0] dat_i;
+reg [31:0] adr_i;
+always_ff @(posedge clk_i)
+	we_i <= req_i.we;
+always_ff @(posedge clk_i)
+	sel_i <= req_i.sel;
+always_ff @(posedge clk_i)
+	dat_i <= req_i.adr[13:0] < 14'h0200 ? (req_i.adr[8] ? fnRbo32(req_i.dat) : req_i.dat) : req_i.dat;
+always_ff @(posedge clk_i)
+	adr_i <= req_i.adr;
 
 assign cs_config_i = cs_i && req_i.cyc &&
 		req_i.adr[27:22]==CFG_BUS &&
 		req_i.adr[21:17]==CFG_DEVICE &&
 		req_i.adr[16:14]==CFG_FUNC;
 
-vtdl #(.WID(1), .DEP(16)) udlyc (.clk(clk_i), .ce(1'b1), .a(0), .d(cs & ~req_i.we), .q(rd_ack));
-vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(0), .d(cs &  req_i.we), .q(wr_ack));
+wire ack_o;
+
+ack_gen #(
+	.READ_STAGES(3),
+	.WRITE_STAGES(1),
+	.REGISTER_OUTPUT(1)
+) uag1
+(
+	.rst_i(rst_i),
+	.clk_i(clk_i),
+	.ce_i(1'b1),
+	.rid_i('d0),
+	.wid_i('d0),
+	.i(cs & ~req_i.we),
+	.we_i(cs & req_i.we),
+	.o(ack_o),
+	.rid_o(),
+	.wid_o()
+);
+
 always_comb
-	resp_o.ack <= (rd_ack|wr_ack);
+	resp_o.ack = ack_o;
 
 vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
-vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.adr), .q(adr3));
+
 always_ff @(posedge clk_i)
-if (resp_o.ack) begin
+if (cs) begin
 	resp_o.tid <= tid3;
-	resp_o.adr <= adr3;
-	if (adr3[13:0] < 14'h0200)
-		resp_o.dat <= adr3[8] ? fnRbo32(dato) : dato;
+	resp_o.adr <= adr_i;
+	if (req_i.adr[13:0] < 14'h0200)
+		resp_o.dat <= req_i.adr[8] ? fnRbo32(dato) : dato;
 	else
 		resp_o.dat <= dato;
 	resp_o.err = fta_bus_pkg::OKAY;
@@ -178,6 +202,7 @@ end
 else begin
 	resp_o.tid <= 13'd0;
 	resp_o.adr <= 32'd0;
+	resp_o.dat <= 32'd0;
 	resp_o.err = fta_bus_pkg::OKAY;
 end
 always_comb resp_o.next = 1'd0;
@@ -245,9 +270,9 @@ else begin
 			irq_req[n4] <= 1'b0;
 
 	if (cs) begin
-		if (req_i.we)
-			casez(req_i.adr[13:2])
-			12'h02:
+		if (we_i) begin
+			casez(adr_i[13:2])
+			12'h00000?000010:
 				begin
 					if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
 					if (sel_i[1]) cmd_reg[15:8] <= dat_i[15:8];
@@ -260,7 +285,7 @@ else begin
 						if (dat_i[15]) stat_reg[15] <= 1'b0;
 					end
 				end
-			12'h04:
+			12'h00000?000100:
 				begin
 					if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
 						bar0 <= CFG_BAR0_MASK;
@@ -271,7 +296,7 @@ else begin
 						if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
 					end
 				end
-			12'h05:
+			12'h00000?000101:
 				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
 					bar1 <= CFG_BAR1_MASK;
 				else begin
@@ -280,7 +305,7 @@ else begin
 					if (sel_i[2])	bar1[23:16] <= dat_i[23:16];
 					if (sel_i[3])	bar1[31:24] <= dat_i[31:24];
 				end
-			12'h06:
+			12'h00000?000110:
 				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
 					bar2 <= CFG_BAR2_MASK;
 				else begin
@@ -290,10 +315,10 @@ else begin
 					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
 				end
 			// IRQ bus controls
-			12'h010:	if (&sel_i[3:0]) irq_vect[0] <= dat_i;
-			12'h011:	if (&sel_i[3:0]) irq_vect[1] <= dat_i;
-			12'h012:	if (&sel_i[3:0]) irq_vect[2] <= dat_i;
-			12'h013:	if (&sel_i[3:0]) irq_vect[3] <= dat_i;
+			12'h00000?010000:	if (&sel_i[3:0]) irq_vect[0] <= dat_i;
+			12'h00000?010001:	if (&sel_i[3:0]) irq_vect[1] <= dat_i;
+			12'h00000?010010:	if (&sel_i[3:0]) irq_vect[2] <= dat_i;
+			12'h00000?010011:	if (&sel_i[3:0]) irq_vect[3] <= dat_i;
 			/*
 			10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
 			10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
@@ -303,33 +328,33 @@ else begin
 			default:
 				;
 			endcase
-		else
-			casez(req_i.adr[13:2])
-			12'h000:	dato <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
-			12'h001:	dato <= {stato_reg,cmdo_reg};
-			12'h002:	dato <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
-			12'h003:	dato <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
-			12'h004:	dato <= bar0;
-			12'h005:	dato <= bar1;
-			12'h006:	dato <= bar2;
-			12'h007:	dato <= 32'hFFFFFFFF;
-			12'h008:	dato <= 32'hFFFFFFFF;
-			12'h009:	dato <= 32'hFFFFFFFF;
-			12'h00A:	dato <= 32'h0;
-			12'h00B:	dato <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
-			12'h00C:	dato <= CFG_ROM_ADDR;
-			12'h00D:	dato <= 32'h0;
-			12'h010:	dato <= irq_vect[0];
-			12'h011:	dato <= irq_vect[1];
-			12'h012:	dato <= irq_vect[2];
-			12'h013:	dato <= irq_vect[3];
-			12'h020:	dato <= pDevName[31: 0];
-			12'h021:	dato <= pDevName[63:32];
-			12'h022:	dato <= pDevName[95:64];
-			12'h023:	dato <= 32'd0;
-			default:	dato <= douta;
-			endcase
+		end
 	end
+	casez(adr_i[13:2])
+	12'b00000?000000:	dato <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
+	12'h00000?000001:	dato <= {stato_reg,cmdo_reg};
+	12'h00000?000010:	dato <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
+	12'h00000?000011:	dato <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
+	12'h00000?000100:	dato <= bar0;
+	12'h00000?000101:	dato <= bar1;
+	12'h00000?000110:	dato <= bar2;
+	12'h00000?000111:	dato <= 32'hFFFFFFFF;
+	12'h00000?001000:	dato <= 32'hFFFFFFFF;
+	12'h00000?001001:	dato <= 32'hFFFFFFFF;
+	12'h00000?001010:	dato <= 32'h0;
+	12'h00000?001011:	dato <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
+	12'h00000?001100:	dato <= CFG_ROM_ADDR;
+	12'h00000?001101:	dato <= 32'h0;
+	12'h00000?010000:	dato <= irq_vect[0];
+	12'h00000?010001:	dato <= irq_vect[1];
+	12'h00000?010010:	dato <= irq_vect[2];
+	12'h00000?010011:	dato <= irq_vect[3];
+	12'h00000?100000:	dato <= pDevName[31: 0];
+	12'h00000?100001:	dato <= pDevName[63:32];
+	12'h00000?100010:	dato <= pDevName[95:64];
+	12'h00000?100011:	dato <= 32'd0;
+	default:	dato <= douta;
+	endcase
 end
 
 // Trigger IRQ message if IRQ signal set.
