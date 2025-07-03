@@ -38,7 +38,7 @@
 // ============================================================================
 //
 import const_pkg::*;
-import fta_bus_pkg::*;
+import wishbone_pkg::*;
 
 module ddbb64_config(rst_i, clk_i, irq_i, cs_i, resp_busy_i, req_i, resp_o,
 	irq_chain_i, irq_chain_o, cs_bar0_o, cs_bar1_o, cs_bar2_o);
@@ -47,15 +47,15 @@ input clk_i;
 input [3:0] irq_i;
 input cs_i;
 input resp_busy_i;
-input fta_cmd_request64_t req_i;
-output fta_cmd_response64_t resp_o;
+input wb_cmd_request64_t req_i;
+output wb_cmd_response64_t resp_o;
 input [15:0] irq_chain_i;
 output reg [15:0] irq_chain_o;
 output reg cs_bar0_o;
 output reg cs_bar1_o;
 output reg cs_bar2_o;
 
-parameter pDevName = "UNKNOWN     ";
+parameter pDevName = "UNKNOWN         ";
 parameter CFG_BUS = 6'd0;
 parameter CFG_DEVICE = 5'd0;
 parameter CFG_FUNC = 3'd0;
@@ -143,8 +143,8 @@ wire [7:0] sel_i = req_i.sel;
 reg [63:0] dat_i;
 always_comb
 begin
-	if (req_i.adr[13:0] < 14'h040) begin
-		if (req_i.adr[6])
+	if (req_i.adr[13:0] < 14'h0200) begin
+		if (req_i.adr[8])
 			dat_i = {req_i.dat[7:0],req_i.dat[15:8],req_i.dat[23:16],req_i.dat[31:24],
 				req_i.dat[39:32],req_i.dat[47:40],req_i.dat[55:48],req_i.dat[63:56]};
 		else
@@ -165,18 +165,18 @@ wire erc = req_i.cti==ERC;
 wire cs = cs_config_i;
 
 vtdl #(.WID(1), .DEP(16)) udlyc (.clk(clk_i), .ce(1'b1), .a(0), .d(cs & ~req_i.we), .q(rd_ack));
-vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(0), .d(cs &  req_i.we & erc), .q(wr_ack));
+vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(0), .d(cs &  req_i.we), .q(wr_ack));
 always_comb
 	resp_o.ack <= (rd_ack|wr_ack);
 
 vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
 vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.adr), .q(adr3));
 always_ff @(posedge clk_i)
-if (resp_o.ack) begin
+if (cs) begin
 	resp_o.tid <= tid3;
 	resp_o.adr <= adr3;
-	if (resp_o.adr[13:0] < 14'h0040) begin
-		if (resp_o.adr[6])
+	if (resp_o.adr[13:0] < 14'h0200) begin
+		if (resp_o.adr[8])
 			resp_o.dat <= {dat_o[7:0],dat_o[15:8],dat_o[23:16],dat_o[31:24],
 				dat_o[39:32],dat_o[47:40],dat_o[55:48],dat_o[63:56]};
 		else
@@ -190,6 +190,7 @@ else begin
 	resp_o.tid <= 13'd0;
 	resp_o.adr <= 64'd0;
 	resp_o.err = fta_bus_pkg::OKAY;
+	resp_o.dat <= 64'd0;
 end
 always_comb resp_o.next = 1'd0;
 always_comb resp_o.stall = 1'd0;
@@ -363,7 +364,7 @@ else begin
 					dat_o[63:32] <= irq_vect[3];
 				end
 			12'h010:	dat_o <= pDevName[63: 0];
-			12'h011:	dat_o <= {32'd0,pDevName[95:64]};
+			12'h011:	dat_o <= {pDevName[127:64]};
 			default:	dat_o <= douta;
 			endcase
 	end

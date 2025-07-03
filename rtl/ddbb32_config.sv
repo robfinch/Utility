@@ -55,7 +55,7 @@ output reg cs_bar2_o;
 input [15:0] irq_chain_i;
 output reg [15:0] irq_chain_o;
 
-parameter pDevName = "UNKNOWN     ";
+parameter pDevName = "UNKNOWN         ";
 
 parameter CFG_BUS = 6'd0;
 parameter CFG_DEVICE = 5'd0;
@@ -352,7 +352,7 @@ else begin
 	12'h00000?100000:	dato <= pDevName[31: 0];
 	12'h00000?100001:	dato <= pDevName[63:32];
 	12'h00000?100010:	dato <= pDevName[95:64];
-	12'h00000?100011:	dato <= 32'd0;
+	12'h00000?100011:	dato <= pDevName[127:96];
 	default:	dato <= douta;
 	endcase
 end
