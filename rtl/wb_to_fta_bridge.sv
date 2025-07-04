@@ -107,7 +107,6 @@ typedef enum logic [2:0]
 	wait_state = 3'd0,
 	access_state,
 	access_ack_state,
-	ctrl_ack_state,
 	nack_state
 } bus_state_e;
 reg [4:0] bridge_state;
@@ -125,22 +124,31 @@ else begin
 			if (cyc & stb_i) begin
 				case(adr_i)
 				32'h7FFFFFF0,
-				32'hBFFFFFF0:	
-					if (we_i) src_adr <= dat_i[31:0];
-					else begin
-						dat_o <= {8{src_adr}};
+				32'hBFFFFFF0:
+					begin	
+						if (we_i)
+							src_adr <= dat_i[31:0];
+						else
+							dat_o <= {8{src_adr}};
+						ack_o <= HIGH;
 					end
 				32'h7FFFFFF4,
 				32'hBFFFFFF4:
-					if (we_i) dst_adr <= dat_i[31:0];
-					else begin
-						dat_o <= {8{dst_adr}};
+					begin
+						if (we_i)
+							dst_adr <= dat_i[31:0];
+						else
+							dat_o <= {8{dst_adr}};
+						ack_o <= HIGH;
 					end
 				32'h7FFFFFF8,
 				32'hBFFFFFF8:
-					if (we_i) blen <= dat_i[7:0];
-					else begin
-						dat_o <= {8{24'd0,blen}};
+					begin
+						if (we_i)
+							blen <= dat_i[7:0];
+						else
+							dat_o <= {8{24'd0,blen}};
+						ack_o <= HIGH;
 					end
 				32'h7FFFFFFC,
 				32'hBFFFFFFC:
@@ -153,6 +161,8 @@ else begin
 						fta_o.req.sel <= {WID/8{1'b1}};
 						fta_o.req.adr <= we_i ? dst_adr : src_adr;
 						fta_o.req.data1 <= dat_i;//data_hold;
+						if (we_i)
+							ack_o <= HIGH;
 					end
 				default:
 					begin
@@ -164,6 +174,8 @@ else begin
 						fta_o.req.sel <= sel_i;
 						fta_o.req.adr <= adr_i;
 						fta_o.req.data1 <= dat_i;
+						if (we_i)
+							ack_o <= HIGH;
 					end
 				endcase
 		// These are zero
@@ -172,9 +184,6 @@ else begin
 		 	end
 		end
 
-	bridge_state[ctrl_ack_state]:
-		ack_o <= HIGH;
-		
 	bridge_state[access_state]:
 		begin
 			fta_o.req <= 1000'd0;
@@ -217,18 +226,20 @@ else begin
 			32'hBFFFFFF4,
 			32'h7FFFFFF8,
 			32'hBFFFFFF8:
-				bridge_state[ctrl_ack_state] <= 1'b1;
+				bridge_state[nack_state] <= 1'b1;
 			32'h7FFFFFFC,
 			32'hBFFFFFFC:
-				bridge_state[access_state] <= 1'b1;
+				begin
+					if (we_i)
+						bridge_state[nack_state] <= 1'b1;
+					else			
+						bridge_state[access_state] <= 1'b1;
+				end
 			default:	bridge_state[access_state] <= 1'b1;
 			endcase
 		else
 			bridge_state[wait_state] <= 1'b1;
 
-	bridge_state[ctrl_ack_state]:
-		bridge_state[nack_state] <= 1'b1;
-	
 	bridge_state[access_state]:
 		if (!(cyc & stb_i))	// Master aborted?
 			bridge_state[wait_state] <= 1'b1;
