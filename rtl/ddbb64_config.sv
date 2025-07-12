@@ -174,9 +174,8 @@ vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.adr)
 always_ff @(posedge clk_i)
 if (cs) begin
 	resp_o.tid <= tid3;
-	resp_o.adr <= adr3;
-	if (resp_o.adr[13:0] < 14'h0200) begin
-		if (resp_o.adr[8])
+	if (adr3[13:0] < 14'h0200) begin
+		if (adr3[8])
 			resp_o.dat <= {dat_o[7:0],dat_o[15:8],dat_o[23:16],dat_o[31:24],
 				dat_o[39:32],dat_o[47:40],dat_o[55:48],dat_o[63:56]};
 		else
@@ -188,7 +187,6 @@ if (cs) begin
 end
 else begin
 	resp_o.tid <= 13'd0;
-	resp_o.adr <= 64'd0;
 	resp_o.err = fta_bus_pkg::OKAY;
 	resp_o.dat <= 64'd0;
 end
