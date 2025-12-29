@@ -88,6 +88,7 @@ parameter CFG_IRQ_CAUSE = 8'd0;
 parameter CFG_ROM_FILENAME = "ddbb64_config.mem";
 
 localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
+parameter BUS_PROTOCOL = 0;
 
 parameter MSIX = 1'b0;
 parameter NIRQ = 0;
@@ -95,6 +96,7 @@ parameter ROM = 0;
 
 integer n1,n2,n3,n4;
 reg sleep;								// put ROM to sleep
+reg [15:0] tid_o;
 reg [31:0] bar0;
 reg [31:0] bar1;
 reg [31:0] bar2;
@@ -108,8 +110,8 @@ reg int_disable;
 reg [7:0] latency_timer = 8'h00;
 reg [NIRQ-1:0] irqf;
 reg [5:0] irq_timer [0:NIRQ-1];
-fta_cmd_response64_t irq_resp;
-fta_imessage_t irq_resp2, irq_resp1;
+wb_cmd_response64_t irq_resp;
+wb_imessage_t irq_resp2, irq_resp1;
 wire cs_config_i;
 reg [NIRQ-1:0] irq_req;
 reg [NIRQ-1:0] irq_i2;
@@ -134,11 +136,12 @@ wire [63:0] douta;
 
 reg [63:0] dat_o;
 
-// FTA bus interface
+// bus interface
+reg ack;
 wire rd_ack, wr_ack;
 wire [31:0] adr3;
-fta_asid_t asid3;
-fta_tranid_t tid3;
+wb_asid_t asid3;
+wb_tranid_t tid3;
 wire [7:0] sel_i = req_i.sel;
 reg [63:0] dat_i;
 always_comb
@@ -157,23 +160,27 @@ end
 wire [31:0] adr_i = req_i.adr;
 
 assign cs_config_i = cs_i && req_i.cyc &&
-		req_i.adr[27:22]==CFG_BUS &&
-		req_i.adr[21:17]==CFG_DEVICE &&
-		req_i.adr[16:14]==CFG_FUNC;
+		req_i.adr[27:21]==CFG_BUS &&
+		req_i.adr[20:16]==CFG_DEVICE &&
+		req_i.adr[15:13]==CFG_FUNC &&
+		((BUS_PROTOCOL==0) ? !ack: TRUE);
 
-wire erc = req_i.cti==ERC;
+wire erc = req_i.cti==wishbone_pkg::ERC;
 wire cs = cs_config_i;
 
 vtdl #(.WID(1), .DEP(16)) udlyc (.clk(clk_i), .ce(1'b1), .a(0), .d(cs & ~req_i.we), .q(rd_ack));
 vtdl #(.WID(1), .DEP(16)) udlyw (.clk(clk_i), .ce(1'b1), .a(0), .d(cs &  req_i.we), .q(wr_ack));
 always_comb
-	resp_o.ack <= (rd_ack|wr_ack);
+	resp_o.ack <= (BUS_PROTOCOL==0) ? ack : (rd_ack|wr_ack);
 
-vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
+vtdl #(.WID($bits(wb_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
 vtdl #(.WID(32), .DEP(16)) udlyadr (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.adr), .q(adr3));
 always_ff @(posedge clk_i)
 if (cs) begin
-	resp_o.tid <= tid3;
+	if (BUS_PROTOCOL==0)
+		resp_o.tid <= tid_o;
+	else
+		resp_o.tid <= tid3;
 	if (adr3[13:0] < 14'h0200) begin
 		if (adr3[8])
 			resp_o.dat <= {dat_o[7:0],dat_o[15:8],dat_o[23:16],dat_o[31:24],
@@ -183,11 +190,11 @@ if (cs) begin
 	end
 	else
 		resp_o.dat <= dat_o;
-	resp_o.err = fta_bus_pkg::OKAY;
+	resp_o.err = wishbone_pkg::OKAY;
 end
 else begin
 	resp_o.tid <= 13'd0;
-	resp_o.err = fta_bus_pkg::OKAY;
+	resp_o.err = wishbone_pkg::OKAY;
 	resp_o.dat <= 64'd0;
 end
 always_comb resp_o.next = 1'd0;
@@ -229,6 +236,8 @@ initial begin
 		cfg_dat[n1] = 'd0;
 end
 
+reg [1:0] state;
+
 always_ff @(posedge clk_i)
 if (rst_i) begin
 	sleep <= FALSE;
@@ -238,6 +247,8 @@ if (rst_i) begin
 	cmd_reg <= 16'h4003;
 	stat_reg <= 16'h0000;
 	irq_req <= 4'b0;
+	ack <= 1'b0;
+	state <= 2'd0;
 end
 else begin
 	io_space <= cmdo_reg[0];
@@ -250,122 +261,145 @@ else begin
 		if (irqf[n4] & ~irq_i2[n4])
 			irq_req[n4] <= 1'b0;
 
-	if (cs) begin
-		if (req_i.we)
-			casez(req_i.adr[13:3])
-			11'h001:
-				begin
-					if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
-					if (sel_i[1]) cmd_reg[15:8] <= dat_i[15:8];
-					if (sel_i[3]) begin
-						if (dat_i[8]) stat_reg[8] <= 1'b0;
-						if (dat_i[11]) stat_reg[11] <= 1'b0;
-						if (dat_i[12]) stat_reg[12] <= 1'b0;
-						if (dat_i[13]) stat_reg[13] <= 1'b0;
-						if (dat_i[14]) stat_reg[14] <= 1'b0;
-						if (dat_i[15]) stat_reg[15] <= 1'b0;
+	if (BUS_PROTOCOL==1)
+		ack <= 1'b0;
+
+	case(state)
+	2'd0:
+		if (cs) begin
+			if (BUS_PROTOCOL==0) begin
+				tid_o <= req_i.tid;
+				state <= 2'd1;
+			end
+			if (req_i.we)
+				casez(req_i.adr[13:3])
+				11'h001:
+					begin
+						if (sel_i[0]) cmd_reg[7:0] <= dat_i[7:0];
+						if (sel_i[1]) cmd_reg[15:8] <= dat_i[15:8];
+						if (sel_i[3]) begin
+							if (dat_i[8]) stat_reg[8] <= 1'b0;
+							if (dat_i[11]) stat_reg[11] <= 1'b0;
+							if (dat_i[12]) stat_reg[12] <= 1'b0;
+							if (dat_i[13]) stat_reg[13] <= 1'b0;
+							if (dat_i[14]) stat_reg[14] <= 1'b0;
+							if (dat_i[15]) stat_reg[15] <= 1'b0;
+						end
 					end
-				end
-			11'h002:
-				begin
+				11'h002:
+					begin
+						if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
+							bar0 <= CFG_BAR0_MASK;
+						else begin
+							if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
+							if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
+							if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
+							if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+						end
+						if (&sel_i[7:4] && dat_i[63:32]==32'hFFFFFFFF)
+							bar1 <= CFG_BAR1_MASK;
+						else begin
+							if (sel_i[4])	bar1[7:0] <= dat_i[39:32];
+							if (sel_i[5])	bar1[15:8] <= dat_i[47:40];
+							if (sel_i[6])	bar1[23:16] <= dat_i[55:48];
+							if (sel_i[7])	bar1[31:24] <= dat_i[63:56];
+						end
+					end
+				11'h003:
 					if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-						bar0 <= CFG_BAR0_MASK;
+						bar2 <= CFG_BAR2_MASK;
 					else begin
-						if (sel_i[0])	bar0[7:0] <= dat_i[7:0];
-						if (sel_i[1])	bar0[15:8] <= dat_i[15:8];
-						if (sel_i[2])	bar0[23:16] <= dat_i[23:16];
-						if (sel_i[3])	bar0[31:24] <= dat_i[31:24];
+						if (sel_i[0])	bar2[7:0] <= dat_i[7:0];
+						if (sel_i[1])	bar2[15:8] <= dat_i[15:8];
+						if (sel_i[2])	bar2[23:16] <= dat_i[23:16];
+						if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
 					end
-					if (&sel_i[7:4] && dat_i[63:32]==32'hFFFFFFFF)
-						bar1 <= CFG_BAR1_MASK;
-					else begin
-						if (sel_i[4])	bar1[7:0] <= dat_i[39:32];
-						if (sel_i[5])	bar1[15:8] <= dat_i[47:40];
-						if (sel_i[6])	bar1[23:16] <= dat_i[55:48];
-						if (sel_i[7])	bar1[31:24] <= dat_i[63:56];
+				// IRQ bus controls
+				11'h010:	
+					begin
+						if (&sel_i[3:0]) irq_vect[0] <= dat_i[15: 0];
+						if (&sel_i[7:4]) irq_vect[1] <= dat_i[47:32];
 					end
-				end
-			11'h003:
-				if (&sel_i[3:0] && dat_i[31:0]==32'hFFFFFFFF)
-					bar2 <= CFG_BAR2_MASK;
-				else begin
-					if (sel_i[0])	bar2[7:0] <= dat_i[7:0];
-					if (sel_i[1])	bar2[15:8] <= dat_i[15:8];
-					if (sel_i[2])	bar2[23:16] <= dat_i[23:16];
-					if (sel_i[3])	bar2[31:24] <= dat_i[31:24];
-				end
-			// IRQ bus controls
-			11'h010:	
-				begin
-					if (&sel_i[3:0]) irq_vect[0] <= dat_i[15: 0];
-					if (&sel_i[7:4]) irq_vect[1] <= dat_i[47:32];
-				end
-			11'h011:
-				begin
-					if (&sel_i[3:0]) irq_vect[2] <= dat_i[15: 0];
-					if (&sel_i[7:4]) irq_vect[3] <= dat_i[47:32];
-				end
-			/*
-			10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
-			10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
-			10'h16:	if (&sel_i[3:0]) irq_info[3'd3][31:0] <= dat_i;
-			10'h17:	if (&sel_i[3:0]) irq_info[3'd3][63:32] <= dat_i;
-			*/
-			default:
-				;
-			endcase
-		else
-			casez(req_i.adr[13:3])
-			11'h000:
-				begin
-					dat_o[31: 0] <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
-					dat_o[63:32] <= {stato_reg,cmdo_reg};
-				end
-			11'h001:
-				begin
-					dat_o[31: 0] <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
-					dat_o[63:32] <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
-				end
-			11'h002:
-				begin
-					dat_o[31: 0] <= bar0;
-					dat_o[63:32] <= bar1;
-				end
-			11'h003:
-				begin
-					dat_o[31: 0] <= bar2;
-					dat_o[63:32] <= 32'hFFFFFFFF;
-				end
-			11'h004:
-				begin
-					dat_o[31: 0] <= 32'hFFFFFFFF;
-					dat_o[63:32] <= 32'hFFFFFFFF;
-				end
-			11'h005:
-				begin
-					dat_o[31: 0] <= 32'h0;
-					dat_o[63:32] <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
-				end
-			11'h006:
-				begin
-					dat_o[31: 0] <= CFG_ROM_ADDR;
-					dat_o[63:32] <= 32'h0;
-				end
-			11'h008:
-				begin
-					dat_o[31: 0] <= irq_vect[0];
-					dat_o[63:32] <= irq_vect[1];
-				end
-			11'h009:
-				begin
-					dat_o[31: 0] <= irq_vect[2];
-					dat_o[63:32] <= irq_vect[3];
-				end
-			12'h010:	dat_o <= pDevName[63: 0];
-			12'h011:	dat_o <= {pDevName[127:64]};
-			default:	dat_o <= douta;
-			endcase
-	end
+				11'h011:
+					begin
+						if (&sel_i[3:0]) irq_vect[2] <= dat_i[15: 0];
+						if (&sel_i[7:4]) irq_vect[3] <= dat_i[47:32];
+					end
+				/*
+				10'h14:	if (&sel_i[3:0]) irq_info[3'd2][31:0] <= dat_i;
+				10'h15:	if (&sel_i[3:0]) irq_info[3'd2][63:32] <= dat_i;
+				10'h16:	if (&sel_i[3:0]) irq_info[3'd3][31:0] <= dat_i;
+				10'h17:	if (&sel_i[3:0]) irq_info[3'd3][63:32] <= dat_i;
+				*/
+				default:
+					;
+				endcase
+			else
+				casez(req_i.adr[13:3])
+				11'h000:
+					begin
+						dat_o[31: 0] <= {CFG_DEVICE_ID,CFG_VENDOR_ID};
+						dat_o[63:32] <= {stato_reg,cmdo_reg};
+					end
+				11'h001:
+					begin
+						dat_o[31: 0] <= {CFG_CLASS,CFG_SUBCLASS,CFG_PROGIF,CFG_REVISION_ID};
+						dat_o[63:32] <= {8'h00,CFG_HEADER_TYPE,latency_timer,CFG_CACHE_LINE_SIZE};
+					end
+				11'h002:
+					begin
+						dat_o[31: 0] <= bar0;
+						dat_o[63:32] <= bar1;
+					end
+				11'h003:
+					begin
+						dat_o[31: 0] <= bar2;
+						dat_o[63:32] <= 32'hFFFFFFFF;
+					end
+				11'h004:
+					begin
+						dat_o[31: 0] <= 32'hFFFFFFFF;
+						dat_o[63:32] <= 32'hFFFFFFFF;
+					end
+				11'h005:
+					begin
+						dat_o[31: 0] <= 32'h0;
+						dat_o[63:32] <= {CFG_SUBSYSTEM_ID,CFG_SUBSYSTEM_VENDOR_ID};
+					end
+				11'h006:
+					begin
+						dat_o[31: 0] <= CFG_ROM_ADDR;
+						dat_o[63:32] <= 32'h0;
+					end
+				11'h008:
+					begin
+						dat_o[31: 0] <= irq_vect[0];
+						dat_o[63:32] <= irq_vect[1];
+					end
+				11'h009:
+					begin
+						dat_o[31: 0] <= irq_vect[2];
+						dat_o[63:32] <= irq_vect[3];
+					end
+				12'h010:	dat_o <= pDevName[63: 0];
+				12'h011:	dat_o <= {pDevName[127:64]};
+				default:	dat_o <= douta;
+				endcase
+		end
+	2'd1:
+		begin
+			ack <= 1'b1;
+			state <= 2'd2;
+		end
+	2'd2:
+		if (!req_i.cyc) begin
+			ack <= 1'b0;
+			tid_o <= 16'd0;
+			dat_o <= 64'd0;
+			state <= 2'd0;
+		end
+	default:	state <= 2'd0;
+	endcase
 end
 
 // Trigger IRQ message if IRQ signal set.
@@ -384,21 +418,11 @@ else begin
 		if (irq_i[n2]|irq_req[n2])
 			irqf[n2] <= irq_timer[n2]==6'h3F;
 	end
-	if (irqf[0] && irq_empty) begin
-		irqf[0] <= FALSE;
-		irq_chain_o <= irq_vect[0];
-	end
-	else if (irqf[1] && irq_empty) begin
-		irqf[1] <= FALSE;
-		irq_chain_o <= irq_vect[1];
-	end
-	else if (irqf[2] && irq_empty) begin
-		irqf[2] <= FALSE;
-		irq_chain_o <= irq_vect[2];
-	end
-	else if (irqf[3] && irq_empty) begin
-		irqf[3] <= FALSE;
-		irq_chain_o <= irq_vect[3];
+	for (n2 = NIRQ-1; n2 >= 0; n2 = n2 - 1) begin
+		if (irqf[n2] && irq_empty) begin
+			irqf[n2] <= FALSE;
+			irq_chain_o <= irq_vect[n2];
+		end
 	end
 end
 
@@ -500,6 +524,8 @@ if (ROM)
                                        // is 32, wea would be 4'b0010.
 
    );
+else
+	assign douta = 64'd0;
 end
 endgenerate
 

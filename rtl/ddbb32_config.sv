@@ -93,6 +93,7 @@ localparam CFG_HEADER_TYPE = 8'h00;			// 00 = a general device
 parameter MSIX = 1'b0;
 parameter NIRQ = 0;
 parameter ROM = 0;
+parameter BUS_PROTOCOL = 0;
 
 integer n1,n2,n3,n4;
 reg sleep;								// put ROM to sleep
@@ -109,8 +110,8 @@ reg int_disable;
 reg [7:0] latency_timer = 8'h00;
 reg [NIRQ-1:0] irqf;
 reg [5:0] irq_timer [0:NIRQ-1];
-fta_cmd_response64_t irq_resp;
-fta_imessage_t irq_resp2, irq_resp1;
+wb_cmd_response64_t irq_resp;
+wb_imessage_t irq_resp2, irq_resp1;
 wire cs_config_i;
 reg [NIRQ-1:0] irq_req;
 reg [NIRQ-1:0] irq_i2;
@@ -138,7 +139,7 @@ reg [31:0] dato;
 wire cs = cs_config_i;
 
 // FTA bus interface
-fta_tranid_t tid3;
+wb_tranid_t tid3;
 reg we_i;
 reg [3:0] sel_i;
 reg [31:0] dat_i;
@@ -180,18 +181,18 @@ ack_gen #(
 always_comb
 	resp_o.ack = ack_o;
 
-vtdl #(.WID($bits(fta_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
+vtdl #(.WID($bits(wb_tranid_t)), .DEP(16)) udlytid (.clk(clk_i), .ce(1'b1), .a(0), .d(req_i.tid), .q(tid3));
 
 always_ff @(posedge clk_i)
 if (cs) begin
 	resp_o.tid <= tid3;
 	resp_o.dat <= dato;
-	resp_o.err = fta_bus_pkg::OKAY;
+	resp_o.err = wishbone_pkg::OKAY;
 end
 else begin
 	resp_o.tid <= 13'd0;
 	resp_o.dat <= 32'd0;
-	resp_o.err = fta_bus_pkg::OKAY;
+	resp_o.err = wishbone_pkg::OKAY;
 end
 always_comb resp_o.next = 1'd0;
 always_comb resp_o.stall = 1'd0;
