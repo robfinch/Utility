@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2022  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2022-2026  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -46,7 +46,6 @@ input cyc;				// shorten the feedback cycle
 output [WID:1] o;
 
 reg [WID:0] c;
-reg [23:0] n;
 assign o = c[WID:1];
 
 always @(posedge clk)
