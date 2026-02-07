@@ -40,15 +40,15 @@ module flo288(i, o);
 input [287:0] i;
 output reg [8:0] o;
 
-wire [7:0] o1,o2,o3,o4;
+wire [7:0] o1,o2;
 flo144 u3 (i[287:144],o1);
 flo144 u4 (i[143:  0],o2);
 always_comb
 if (o1==8'd255 && o2==8'd255)
 	o <= 9'd511;
-else if (o1==8'd255)
-	o <= {2'b0,o2};
+else if (o2==8'd255)
+	o <= 9'd144 + {1'b0,o1};
 else
-  o <= 9'd144 + {1'b0,o1};
+  o <= {2'b0,o2};
 
 endmodule

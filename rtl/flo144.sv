@@ -1,6 +1,6 @@
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2021-2023  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2021-2026  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -47,11 +47,11 @@ flo48 u3 (i[47:0],o3);
 always_comb
 if (o1==6'd63 && o2==6'd63 && o3==6'd63)
 	o <= 8'd255;
-else if (o1==6'd63 && o2==6'd63)
-	o <= o3;
-else if (o1==6'd63)
+else if (o2==6'd63 && o3==6'd63)
+	o <= 8'd96 + o1;
+else if (o3==6'd63)
   o <= 8'd48 + o2;
 else
-  o <= 8'd96 + o1;
+  o <= {2'b0,o3};
 
 endmodule
