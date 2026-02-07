@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2008-2025  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2008-2026  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
@@ -40,22 +40,14 @@ import const_pkg::*;
 import wishbone_pkg::*;
 import fta_bus_pkg::*;
 
-module wb_to_fta_bridge(rst_i, clk_i, cs_i, cyc_i, stb_i, ack_o, err_o, we_i, sel_i, adr_i, dat_i, dat_o, fta_o);
+module wb_to_fta_bridge(rst_i, clk_i, cs_i, wb_i, fta_o);
 parameter WID=256;
 parameter RETRIES=300;
 parameter CORENO = 6'd1;
 input rst_i;
 input clk_i;
 input cs_i;
-input cyc_i;
-input stb_i;
-output reg ack_o;
-output reg [2:0] err_o;
-input we_i;
-input [WID/8-1:0] sel_i;
-input [31:0] adr_i;
-input [WID-1:0] dat_i;
-output reg [WID-1:0] dat_o;
+wb_bus_interface.slave wb_i;
 fta_bus_interface.master fta_o;
 
 reg [7:0] blen;
@@ -68,13 +60,13 @@ wire pe_cyc;
 wire pe_cycx;
 
 always_comb
-	cyc = cyc_i & cs_i & ~fta_o.resp.stall;
+	cyc = wb_i.req.cyc & cs_i & ~fta_o.resp.stall;
 edge_det ued1 (.rst(rst_i), .clk(clk_i), .ce(1'b1), .i(cyc), .pe(pe_cyc), .ne(), .ee());
 pulse_extender upe1 (.clk_i(clk_i), .ce_i(1'b1), .cnt_i(4'd1), .i(pe_cyc), .o(pe_cycx), .no());
 
 always_ff @(posedge clk_i)
 begin
-	cycd <= cyc_i & ~fta_o.resp.stall;
+	cycd <= wb_i.req.cyc & ~fta_o.resp.stall;
 	if (fta_o.resp.rty)
 		cycd <= 1'b0;
 end
@@ -83,7 +75,7 @@ always_ff @(posedge clk_i)
 if (rst_i)
 	rty_cnt <= 10'd0;
 else begin
-	if (fta_o.resp.ack || !(cyc & stb_i))
+	if (fta_o.resp.ack || !(cyc & wb_i.req.stb))
 		rty_cnt <= 10'd0;
 	else if (fta_o.resp.rty) begin
 		rty_cnt <= rty_cnt + 2'd1;
@@ -92,14 +84,14 @@ end
 
 always_ff @(posedge clk_i)
 if (rst_i)
-	err_o <= fta_bus_pkg::OKAY;
+	wb_i.resp.err <= fta_bus_pkg::OKAY;
 else begin
-	if (cyc_i & ~cycd)
-		err_o <= fta_bus_pkg::OKAY;
+	if (wb_i.req.cyc & ~cycd)
+		wb_i.resp.err <= fta_bus_pkg::OKAY;
 	if (rty_cnt==RETRIES)
-		err_o <= fta_bus_pkg::ERR;
-	if (!cyc_i)
-		err_o <= fta_bus_pkg::OKAY;
+		wb_i.resp.err <= fta_bus_pkg::ERR;
+	if (!wb_i.req.cyc)
+		wb_i.resp.err <= fta_bus_pkg::OKAY;
 end
 
 typedef enum logic [2:0] 
@@ -114,68 +106,68 @@ reg [4:0] bridge_state;
 always_ff @(posedge clk_i)
 if (rst_i) begin
 	fta_o.req <= 1000'd0;
-	ack_o <= LOW;
+	wb_i.resp.ack <= LOW;
 end
 else begin
 	fta_o.req <= 1000'd0;
 	case(1'b1)
 	bridge_state[wait_state]:
 		begin
-			if (cyc & stb_i) begin
-				case(adr_i)
+			if (cyc & wb_i.req.stb) begin
+				case(wb_i.req.adr)
 				32'h7FFFFFF0,
 				32'hBFFFFFF0:
 					begin	
-						if (we_i)
-							src_adr <= dat_i[31:0];
+						if (wb_i.req.we)
+							src_adr <= wb_i.req.dat[31:0];
 						else
-							dat_o <= {8{src_adr}};
-						ack_o <= HIGH;
+							wb_i.resp.dat <= {8{src_adr}};
+						wb_i.resp.ack <= HIGH;
 					end
 				32'h7FFFFFF4,
 				32'hBFFFFFF4:
 					begin
-						if (we_i)
-							dst_adr <= dat_i[31:0];
+						if (wb_i.req.we)
+							dst_adr <= wb_i.req.dat[31:0];
 						else
-							dat_o <= {8{dst_adr}};
-						ack_o <= HIGH;
+							wb_i.resp.dat <= {8{dst_adr}};
+						wb_i.resp.ack <= HIGH;
 					end
 				32'h7FFFFFF8,
 				32'hBFFFFFF8:
 					begin
-						if (we_i)
-							blen <= dat_i[7:0];
+						if (wb_i.req.we)
+							blen <= wb_i.req.dat[7:0];
 						else
-							dat_o <= {8{24'd0,blen}};
-						ack_o <= HIGH;
+							wb_i.resp.dat <= {8{24'd0,blen}};
+						wb_i.resp.ack <= HIGH;
 					end
 				32'h7FFFFFFC,
 				32'hBFFFFFFC:
 					begin
 						fta_o.req.tid <= {CORENO,3'd0,4'd2};
-						fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
-						fta_o.req.we <= we_i;
+						fta_o.req.cmd <= wb_i.req.we ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
+						fta_o.req.we <= wb_i.req.we;
 						fta_o.req.blen <= blen;
 						fta_o.req.cyc <= HIGH;
 						fta_o.req.sel <= {WID/8{1'b1}};
-						fta_o.req.adr <= we_i ? dst_adr : src_adr;
-						fta_o.req.data1 <= dat_i;//data_hold;
-						if (we_i)
-							ack_o <= HIGH;
+						fta_o.req.adr <= wb_i.req.we ? dst_adr : src_adr;
+						fta_o.req.data1 <= wb_i.req.dat;//data_hold;
+						if (wb_i.req.we)
+							wb_i.resp.ack <= HIGH;
 					end
 				default:
 					begin
-						fta_o.req.tid <= {CORENO,3'd0,4'd1};
-						fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
-						fta_o.req.we <= we_i;
-						fta_o.req.blen <= 8'd0;
+						fta_o.req.tid <= wb_i.req.tid;//{CORENO,3'd0,4'd1};
+						fta_o.req.cmd <= wb_i.req.we ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
+						fta_o.req.we <= wb_i.req.we;
+						fta_o.req.blen <= wb_i.req.blen;
 						fta_o.req.cyc <= HIGH;
-						fta_o.req.sel <= sel_i;
-						fta_o.req.adr <= adr_i;
-						fta_o.req.data1 <= dat_i;
-						if (we_i)
-							ack_o <= HIGH;
+						fta_o.req.sel <= wb_i.req.sel;
+						fta_o.req.adr <= wb_i.req.adr;
+						fta_o.req.data1 <= wb_i.req.dat;
+						if (wb_i.req.we)
+							wb_i.resp.ack <= HIGH;
 					end
 				endcase
 		// These are zero
@@ -187,55 +179,55 @@ else begin
 	bridge_state[access_state]:
 		begin
 			fta_o.req <= 1000'd0;
-			if (!(cyc & stb_i)) begin
-				ack_o <= LOW;
-				dat_o <= {WID{1'd0}};
+			if (!(cyc & wb_i.req.stb)) begin
+				wb_i.resp.ack <= LOW;
+				wb_i.resp.dat <= {WID{1'd0}};
 			end
 			else if (fta_o.resp.rty) begin
 				if (fta_o.resp.tid=={CORENO,3'd0,4'd1}) begin
 					fta_o.req.tid <= {CORENO,3'd0,4'd1};
-					fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
-					fta_o.req.we <= we_i;
+					fta_o.req.cmd <= wb_i.req.we ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
+					fta_o.req.we <= wb_i.req.we;
 					fta_o.req.blen <= 8'd0;
 					fta_o.req.cyc <= HIGH;
-					fta_o.req.sel <= sel_i;
-					fta_o.req.adr <= adr_i;
-					fta_o.req.data1 <= dat_i;
-					if (we_i)
-						ack_o <= HIGH;
+					fta_o.req.sel <= wb_i.req.sel;
+					fta_o.req.adr <= wb_i.req.adr;
+					fta_o.req.data1 <= wb_i.req.dat;
+					if (wb_i.req.we)
+						wb_i.resp.ack <= HIGH;
 				end
 				else begin
 					fta_o.req.tid <= {CORENO,3'd0,4'd2};
-					fta_o.req.cmd <= we_i ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
-					fta_o.req.we <= we_i;
+					fta_o.req.cmd <= wb_i.req.we ? fta_bus_pkg::CMD_STORE : fta_bus_pkg::CMD_LOAD;
+					fta_o.req.we <= wb_i.req.we;
 					fta_o.req.blen <= blen;
 					fta_o.req.cyc <= HIGH;
 					fta_o.req.sel <= {WID/8{1'b1}};
-					fta_o.req.adr <= we_i ? dst_adr : src_adr;
-					fta_o.req.data1 <= dat_i;//data_hold;
-					if (we_i)
-						ack_o <= HIGH;
+					fta_o.req.adr <= wb_i.req.we ? dst_adr : src_adr;
+					fta_o.req.data1 <= wb_i.req.dat;//data_hold;
+					if (wb_i.req.we)
+						wb_i.resp.ack <= HIGH;
 				end
 			end
-			else if (we_i) begin
-				ack_o <= HIGH;
-				dat_o <= {WID{1'd0}};
+			else if (wb_i.req.we) begin
+				wb_i.resp.ack <= HIGH;
+				wb_i.resp.dat <= {WID{1'd0}};
 			end
-			else if ((fta_o.resp.ack && fta_o.resp.tid=={CORENO,3'd0,4'd1})) begin// || rty_cnt==RETRIES) begin
-				ack_o <= HIGH;
-				dat_o <= fta_o.resp.dat;
+			else if ((fta_o.resp.ack && fta_o.resp.tid!={CORENO,3'd0,4'd2})) begin// || rty_cnt==RETRIES) begin
+				wb_i.resp.ack <= HIGH;
+				wb_i.resp.dat <= fta_o.resp.dat;
 			end
 			else if (fta_o.resp.ack && fta_o.resp.tid=={CORENO,3'd0,4'd2}) begin
 				data_hold <= fta_o.resp.dat;
-				ack_o <= HIGH;
-				dat_o <= fta_o.resp.dat;
+				wb_i.resp.ack <= HIGH;
+				wb_i.resp.dat <= fta_o.resp.dat;
 			end
 		end
 
 	bridge_state[nack_state]:
 		begin
-			ack_o <= LOW;
-			dat_o <= {WID{1'd0}};
+			wb_i.resp.ack <= LOW;
+			wb_i.resp.dat <= {WID{1'd0}};
 		end
 	endcase
 end
@@ -249,8 +241,8 @@ else begin
 	bridge_state <= 5'd0;
 	case(1'b1)
 	bridge_state[wait_state]:
-		if (cyc & stb_i)
-			case(adr_i)
+		if (cyc & wb_i.req.stb)
+			case(wb_i.req.adr)
 			32'h7FFFFFF0,
 			32'hBFFFFFF0,
 			32'h7FFFFFF4,
@@ -261,13 +253,13 @@ else begin
 			32'h7FFFFFFC,
 			32'hBFFFFFFC:
 				begin
-					if (we_i)
+					if (wb_i.req.we)
 						bridge_state[nack_state] <= 1'b1;
 					else			
 						bridge_state[access_state] <= 1'b1;
 				end
 			default:
-				if (we_i)
+				if (wb_i.req.we)
 					bridge_state[nack_state] <= 1'b1;
 				else
 					bridge_state[access_state] <= 1'b1;
@@ -276,26 +268,34 @@ else begin
 			bridge_state[wait_state] <= 1'b1;
 
 	bridge_state[access_state]:
-		if (!(cyc & stb_i))	// Master aborted?
+		if (!(cyc & wb_i.req.stb))	// Master aborted?
 			bridge_state[wait_state] <= 1'b1;
 		else if (fta_o.resp.rty) begin
-			if (we_i)
+			if (wb_i.req.we)
 				bridge_state[nack_state] <= 1'b1;
 			else
 				bridge_state[access_state] <= 1'b1;
 		end
-		else if (we_i)
+		else if (wb_i.req.we)
 			bridge_state[nack_state] <= 1'b1;
-		else if ((fta_o.resp.ack && fta_o.resp.tid=={CORENO,3'd0,4'd1}))// || rty_cnt==RETRIES)
-			bridge_state[nack_state] <= 1'b1;
-		else if (fta_o.resp.ack && fta_o.resp.tid=={CORENO,3'd0,4'd2})
-			bridge_state[nack_state] <= 1'b1;
+		else if (fta_o.resp.ack) begin
+			if (wb_i.req.blen > 8'd0) begin
+				if (fta_o.resp.err!=fta_bus_pkg::OKAY)	// ERR_EOB
+					bridge_state[nack_state] <= 1'b1;
+			end
+			else begin
+				if (fta_o.resp.tid!={CORENO,3'd0,4'd2})// || rty_cnt==RETRIES)
+					bridge_state[nack_state] <= 1'b1;
+				else if (fta_o.resp.tid=={CORENO,3'd0,4'd2})
+					bridge_state[nack_state] <= 1'b1;
+			end
+		end
 		else
 			bridge_state[access_state] <= 1'b1;
 
 	// Wait until the request has gone away.
 	bridge_state[nack_state]:
-		if (!(cyc & stb_i))
+		if (!(cyc & wb_i.req.stb))
 			bridge_state[wait_state] <= 1'b1;
 		
 	default:

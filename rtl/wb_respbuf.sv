@@ -34,29 +34,29 @@
 //                                                                          
 // ============================================================================
 
-import fta_bus_pkg::*;
+import wishbone_pkg::*;
 
 // 1800 LUTs / 4000 FFs (5 channels)
 
-module fta_respbuf256(rst, clk, iack_o, resp_i, oack_o, resp_o);
+module wb_respbuf256(rst, clk, iack_o, resp_i, oack_o, resp_o);
 parameter CHANNELS = 5;
 parameter WIDTH = 256;
 localparam HBIT = $clog2(CHANNELS);
 input rst;
 input clk;
-output reg [CHANNELS-1:0] iack_o;					// indicates input has been accepted
-input fta_cmd_response256_t [CHANNELS-1:0] resp_i;
-output reg oack_o;										// indicate new output data is available
-output fta_cmd_response256_t resp_o;
+output reg [CHANNELS-1:0] cyc_i;			// indicates input has been accepted
+input wb_cmd_response256_t [CHANNELS-1:0] resp_i;
+output wb_cmd_response256_t resp_o;
 
+genvar g;
 integer jj1,jj2,jj3,jj4,jj5,jj6;
 wire [CHANNELS-1:0] data_valid;
 wire [CHANNELS-1:0] empty;
 wire [CHANNELS-1:0] full;
 wire [CHANNELS-1:0] rd_rst_busy;
 wire [CHANNELS-1:0] wr_rst_busy;
-fta_cmd_response256_t [CHANNELS-1:0] dout;
-fta_cmd_response256_t [CHANNELS-1:0] din;
+wb_cmd_response256_t [CHANNELS-1:0] dout;
+wb_cmd_response256_t [CHANNELS-1:0] din;
 reg [CHANNELS-1:0] rd_en;
 reg [CHANNELS-1:0] wr_en;
 wire wr_clk = clk;
@@ -65,7 +65,7 @@ wire [CHANNELS-1:0] rr_sel;
 wire [$clog2(CHANNELS)-1:0] rr_sel_enc;
 reg [$clog2(CHANNELS)-1:0] rr_sel_enc2;
 reg [3:0] rst_cnt [0:CHANNELS-1];
-fta_cmd_response256_t resp1;
+wb_cmd_response256_t resp1;
 wire cd_resp;
 
 // Reset counter used to prime the fifo reads.
@@ -79,6 +79,7 @@ else begin
 		rst_cnt[jj1] <= rst_cnt[jj1] + 2'd1;
 end
 
+// Just wires
 always_comb
 for (jj2 = 0; jj2 < CHANNELS; jj2 = jj2 + 1)
 	din[jj2] = resp_i[jj2];
@@ -94,13 +95,20 @@ else
 	rd_en[jj3] <= (rr_sel[jj3] & rr_req[jj3]);// | (rst_cnt[jj3] < 4'd2);
 
 // Write to fifo whenever a response is present.
+wire [CHANNELS-1:0] cd_respi;
+generate begin : gCD
+	for (g = 0; g < CHANNELS; g = g + 1)
+change_det #(.WID($bits(wb_cmd_response256_t))) ucd2 (.rst(rst), .clk(clk), .ce(1'b1), .i(resp[g]), .cd(cd_respi[g]));
+end
+endgenerate
 
+// Pulse write enable for only one cycle
 always_comb
 for (jj4 = 0; jj4 < CHANNELS; jj4 = jj4 + 1)
 if (rst|wr_rst_busy[jj4]|rd_rst_busy[jj4]|full[jj4])
 	wr_en[jj4] <= 1'b0;
 else
-	wr_en[jj4] <= resp[jj4].ack;
+	wr_en[jj4] <= resp[jj4].ack & cd_respi[jj4] & ~wr_en[jj4];
 
 // Ack response
 
@@ -127,7 +135,7 @@ else begin
 if (data_valid[rr_sel_enc2])
 	resp1 <= dout[rr_sel_enc2];
 end
-change_det #(.WID($bits(fta_cmd_response256_t))) ucd1 (.rst(rst), .clk(clk), .ce(1'b1), .i(resp1), .cd(cd_resp));
+change_det #(.WID($bits(wb_cmd_response256_t))) ucd1 (.rst(rst), .clk(clk), .ce(1'b1), .i(resp1), .cd(cd_resp));
 
 always_ff @(posedge clk)
 if (cd_resp)
@@ -296,7 +304,6 @@ wire wr_clk = clk5x;
 wire rd_clk = clk5x;
 reg wr_en, wr_en1, rd_en, rd_en1;
 reg [4:0] ph;
-wire pe_clk;
 
 always_ff @(posedge clk5x)
 if (rst)
@@ -1090,7 +1097,6 @@ wire wr_clk = clk5x;
 wire rd_clk = clk5x;
 reg wr_en, wr_en1, rd_en, rd_en1;
 reg [4:0] ph;
-wire pe_clk;
 
 always_ff @(posedge clk5x)
 if (rst)
@@ -1883,7 +1889,6 @@ wire wr_clk = clk5x;
 wire rd_clk = clk5x;
 reg wr_en, wr_en1, rd_en, rd_en1;
 reg [4:0] ph;
-wire pe_clk;
 
 always_ff @(posedge clk5x)
 if (rst)
@@ -2676,7 +2681,6 @@ wire wr_clk = clk5x;
 wire rd_clk = clk5x;
 reg wr_en, wr_en1, rd_en, rd_en1;
 reg [4:0] ph;
-wire pe_clk;
 
 always_ff @(posedge clk5x)
 if (rst)

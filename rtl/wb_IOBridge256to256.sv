@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 // ============================================================================
 //        __
-//   \\__/ o\    (C) 2013-2025  Robert Finch, Waterloo
+//   \\__/ o\    (C) 2013-2026  Robert Finch, Waterloo
 //    \  __ /    All rights reserved.
 //     \/_//     robfinch<remove>@opencores.org
 //       ||
@@ -70,14 +70,16 @@ reg [1:0] state;
 
 always_ff @(posedge clk_i)
 if (rst_i) begin
-	m_req <= {$bits(fta_cmd_request256_t){1'b0}};
+	m_req <= {$bits(wb_cmd_request256_t){1'b0}};
 	m_req.adr <= 32'hFFFFFFFF;
-	resp <= {$bits(fta_cmd_response256_t){1'b0}};
+	resp <= {$bits(wb_cmd_response256_t){1'b0}};
 	state <= 2'd0;
 end
 else begin
   // Filter requests to the I/O address range
   if (s1_req.cyc) begin
+    m_req.blen <= s1_req.blen;
+    m_req.om <= s1_req.om;
     m_req.bte <= s1_req.bte;
     m_req.cti <= s1_req.cti;
     m_req.cmd <= s1_req.cmd;
@@ -90,7 +92,7 @@ else begin
   end
   else begin
   	m_req.cyc <= 1'd0;
-    m_req.stb <= s1_req.stb;
+    m_req.stb <= 1'b0;
   	m_req.we <= 1'd0;
   	m_req.sel <= 8'd0;
   	m_req.adr <= 32'hFFFFFFFF;
@@ -111,7 +113,7 @@ else begin
 			if (BUS_PROTOCOL==0)
 				state <= {1'b0,s1_req.cyc};
 			for (n1 = 0; n1 < CHANNELS; n1 = n1 + 1) begin
-				if (chresp[n1].ack & s1_req.cyc) begin	
+				if (chresp[n1].ack & s1_req.cyc & s1_req.stb) begin	
 					resp.ack <= chresp[n1].ack;
 					resp.err <= chresp[n1].err;
 					resp.rty <= chresp[n1].rty;
@@ -126,16 +128,18 @@ else begin
 	2'd1:
 		begin
 			for (n1 = 0; n1 < CHANNELS; n1 = n1 + 1) begin
-				resp.ack <= chresp[n1].ack;
-				resp.err <= chresp[n1].err;
-				resp.rty <= chresp[n1].rty;
-				resp.next <= chresp[n1].next;
-				resp.stall <= chresp[n1].stall;
-				resp.dat <= chresp[n1].dat;
-				resp.tid <= chresp[n1].tid;
-				resp.pri <= chresp[n1].pri;
+				if (chresp[n1].ack & s1_req.cyc & s1_req.stb) begin	
+					resp.ack <= chresp[n1].ack;
+					resp.err <= chresp[n1].err;
+					resp.rty <= chresp[n1].rty;
+					resp.next <= chresp[n1].next;
+					resp.stall <= chresp[n1].stall;
+					resp.dat <= chresp[n1].dat;
+					resp.tid <= chresp[n1].tid;
+					resp.pri <= chresp[n1].pri;
+				end
 			end
-			if (!s1_req.cyc) begin
+			if (!s1_req.stb) begin
 				resp <= {$bits(wb_cmd_response256_t){1'b0}};
 				state <= 2'd0;
 			end

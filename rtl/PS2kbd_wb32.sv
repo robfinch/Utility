@@ -276,6 +276,9 @@ if (rst_i) begin
 	resp <= {$bits(wb_cmd_response32_t){1'b0}};
 end
 else begin
+	resp.next <= 1'b0;
+	resp.stall <= 1'b0;
+	resp.rty <= 1'b0;
 	if (BUS_PROTOCOL==1)
 		resp <= {$bits(wb_cmd_response32_t){1'b0}};
 	case(state)
@@ -326,9 +329,6 @@ always_ff @(posedge clk_i)
 always_ff @(posedge clk_i)
 	resp.dat <= cfg_resp.ack ? cfg_resp.dat : cs_io ? dat_o : 32'd0;//irqa ? {24'h00,irq_o[7:0]} : 32'd0;
 */
-assign resp.next = 1'b0;
-assign resp.stall = 1'b0;
-assign resp.rty = 1'b0;
 
 
 ddbb32_config #(

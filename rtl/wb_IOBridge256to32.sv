@@ -145,7 +145,7 @@ always_ff @(posedge clk_i)
 if (rst_i) begin
 	m_req <= 'd0;
 	m_req.adr <= 32'hFFFFFFFF;
-	resp <= {$bits(fta_cmd_response256_t){1'b0}};
+	resp <= {$bits(wb_cmd_response256_t){1'b0}};
 	state <= 2'd0;
 end
 else begin
